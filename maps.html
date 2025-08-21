@@ -1,9 +1,9 @@
 <!DOCTYPE html>
 <html lang="it">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Aura Maps Free</title>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Aura Maps — Free</title>
 
 <!-- Leaflet -->
 <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
@@ -15,64 +15,120 @@
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
 
 <style>
-:root { --accent:#E515F6; --bg:#fff; --text:#111; --border:#ddd; --radius:12px; }
-html,body{margin:0;height:100%;font-family:Arial,sans-serif;}
-body{overflow:hidden;background:var(--bg);}
-.topbar{display:flex;justify-content:space-between;align-items:center;height:50px;padding:0 10px;background:#fff;border-bottom:1px solid var(--border);}
-.topbar img.profile{width:36px;height:36px;border-radius:50%;cursor:pointer;}
-.toggleSidebar{font-size:24px;color:var(--accent);cursor:pointer;}
-.sidebar{position:absolute;top:50px;bottom:0;left:0;width:280px;background:#fff;border-right:1px solid var(--border);
-transform:translateX(-100%);transition:0.3s;display:flex;flex-direction:column;padding:10px;overflow-y:auto;z-index:1000;
-border-top-right-radius:var(--radius);border-bottom-right-radius:var(--radius);}
-.sidebar.active{transform:translateX(0);}
-.sidebar h3{margin-top:0;color:var(--accent);}
-.sidebar input,.sidebar button{margin-top:5px;padding:8px;border-radius:var(--radius);border:1px solid #ccc;}
-.sidebar button.action{background:var(--accent);color:#fff;border:none;}
-.map{height:calc(100% - 50px);}
-#map{width:100%;height:100%;}
-.place-item{padding:8px;border:1px solid #ddd;border-radius:var(--radius);margin-bottom:6px;cursor:pointer;background:#fafafa;}
-.downbar{position:fixed;bottom:0;left:0;width:100%;background:#fff;border-top:1px solid var(--border);padding:12px;display:none;z-index:1500;max-height:50%;overflow-y:auto;border-top-left-radius:var(--radius);border-top-right-radius:var(--radius);}
-.downbar-close{position:absolute;top:5px;right:10px;cursor:pointer;font-weight:bold;color:var(--accent);}
-.overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.3);display:none;z-index:1200;}
-.dialog{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;padding:20px;border-radius:var(--radius);z-index:1300;}
+:root{
+  --accent:#E515F6; --bg:#fff; --text:#111; --border:#e6e6ee; --radius:14px;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;font-family:Inter,Arial,Helvetica,sans-serif;background:var(--bg);overflow:hidden}
+.topbar{
+  height:56px; display:flex; align-items:center; justify-content:space-between;
+  padding:0 12px; background:#fff; border-bottom:1px solid var(--border);
+}
+.toggleSidebar{font-size:22px; color:var(--accent); cursor:pointer; user-select:none}
+.profileWrap{width:44px;height:44px;display:flex;align-items:center;justify-content:center}
+.profile{width:40px;height:40px;border-radius:999px;object-fit:cover;border:2px solid rgba(0,0,0,0.04);cursor:pointer}
+
+.layout { position:relative; height:calc(100% - 56px); }
+
+/* Sidebar */
+.sidebar{
+  position:absolute; top:12px; left:12px; bottom:12px; width:320px; max-width:86%;
+  background:#fff; border-radius:var(--radius); padding:12px; box-shadow:0 8px 30px rgba(2,6,23,0.06);
+  overflow:auto; z-index:1400; transform:translateX(0); transition:transform .22s ease;
+}
+@media(min-width:1025px){
+  .sidebar{ left:12px; top:68px; bottom:12px; width:340px; }
+}
+.sidebarHidden{ transform: translateX(-110%); }
+.sidebar h3{ margin:6px 0; color:var(--accent) }
+
+/* Inputs / buttons */
+.input, .btn{
+  width:100%; padding:10px 12px; border-radius:10px; border:1px solid var(--border); font-size:14px;
+}
+.btn{ background:var(--accent); color:#fff; border:0; cursor:pointer; font-weight:600 }
+.smallBtn{ display:inline-block; padding:8px 10px; border-radius:10px; background:#f5f5f7; border:1px solid var(--border); cursor:pointer; }
+
+/* Map */
+#map{ position:absolute; inset:56px 0 0 0; height:calc(100% - 56px); width:100%; }
+
+/* Places list */
+.place-item{
+  display:flex; gap:8px; align-items:center; justify-content:space-between;
+  padding:10px; border-radius:10px; background:#fbfbfd; border:1px solid var(--border); margin-bottom:8px;
+}
+.place-left{ display:flex; gap:8px; align-items:center; }
+.place-title{ font-weight:600; font-size:14px; color:var(--text); }
+.place-actions{ display:flex; gap:8px; align-items:center; }
+
+/* Downbar */
+.downbar{
+  position:fixed; left:12px; right:12px; bottom:12px; z-index:1500;
+  background:#fff; border-radius:14px; padding:12px; box-shadow:0 12px 40px rgba(2,6,23,0.08);
+  display:none; max-height:48vh; overflow:auto;
+}
+.downbar .closeBtn{ position:absolute; right:14px; top:10px; cursor:pointer; color:var(--accent); font-weight:700 }
+.downbar img{ width:100%; border-radius:10px; margin-top:8px; object-fit:cover; max-height:180px; }
+
+/* toast small */
+.toast{
+  position:fixed; left:50%; transform:translateX(-50%); bottom:84px;
+  background:rgba(10,10,10,0.9); color:#fff; padding:8px 12px; border-radius:10px; font-size:14px; display:none; z-index:1600;
+}
+
+/* responsive tweaks */
+@media(max-width:720px){
+  .sidebar{ width:88%; left:6%; top:70px; bottom:12px; }
+  #map{ inset:56px 0 0 0; }
+  .downbar{ left:8px; right:8px; bottom:8px; }
+}
 </style>
 </head>
 <body>
+  <div class="topbar">
+    <div class="left">
+      <span class="toggleSidebar" id="hamburger">☰</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <div class="profileWrap">
+        <img id="profileImg" class="profile" src="" alt="profile">
+      </div>
+    </div>
+  </div>
 
-<div class="topbar">
-  <span class="toggleSidebar" onclick="toggleSidebar()">☰</span>
-  <img src="auraaccount.png" class="profile" id="profileImg" onclick="showProfilePopup()">
-</div>
+  <div class="layout">
+    <!-- Sidebar (closed on small screens by default) -->
+    <aside id="sidebar" class="sidebar">
+      <h3>Cerca città</h3>
+      <input id="searchInput" class="input" placeholder="Es. Napoli, Via Roma..." />
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button id="searchBtn" class="btn">Cerca</button>
+        <button id="gpsBtn" class="smallBtn">📍 Usa GPS</button>
+      </div>
 
-<div class="sidebar" id="sidebar">
-  <h3>Cerca città</h3>
-  <input type="text" id="searchInput" placeholder="Es. Napoli">
-  <button class="action" onclick="searchPlace()">Cerca</button>
-  <h3>I tuoi preferiti</h3>
-  <div id="placesList"></div>
-  <h3>Azioni rapide</h3>
-  <button class="action" id="gpsBtn" onclick="requestLocation()">📍 Usa GPS</button>
-</div>
+      <hr style="margin:12px 0;border:none;border-top:1px solid var(--border)">
 
-<div class="map">
-  <div id="map"></div>
-</div>
+      <h3>I tuoi preferiti</h3>
+      <div id="placesList"></div>
+    </aside>
 
-<div class="downbar" id="downbar">
-  <span class="downbar-close" onclick="closeDownbar()">✖</span>
-  <h3 id="cityName"></h3>
-  <p id="cityInfo"></p>
-  <img id="cityImg" src="">
-  <p id="cityStats"></p>
-</div>
+    <!-- Map -->
+    <div id="map"></div>
 
-<div class="overlay" id="overlay"></div>
-<div class="dialog" id="profilePopup" style="display:none;">
-  <p>Per gestire il tuo profilo, vai su <b>os.aurastudioitalia.it</b> o scarica <b>Aura+</b> su Google Play Store.</p>
-  <button onclick="closeProfilePopup()">Chiudi</button>
-</div>
+    <!-- Downbar -->
+    <div id="downbar" class="downbar" role="dialog" aria-hidden="false">
+      <span class="closeBtn" id="downbarClose">✖</span>
+      <h3 id="cityName">—</h3>
+      <p id="cityInfo" style="color:#666;margin:6px 0;font-size:14px"></p>
+      <img id="cityImg" src="" alt="foto città">
+      <p id="cityStats" style="margin-top:10px;font-weight:600"></p>
+    </div>
+
+    <div id="toast" class="toast"></div>
+  </div>
 
 <script>
+/* CONFIG */
 const firebaseConfig = {
   apiKey: "AIzaSyDsrHAtIh5bsYDHa1wz0LMcmciChAoRikU",
   authDomain: "myauraid-f03c6.firebaseapp.com",
@@ -81,151 +137,258 @@ const firebaseConfig = {
   messagingSenderId: "190478237725",
   appId: "1:190478237725:web:0d39907473f511b85a06f4"
 };
+const ORS_API_KEY = "eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImUwYzIxYjc2ZmQyNTRiYzY4YTUxNTVlNmIyOGViNDJmIiwiaCI6Im11cm11cjY0In0="; // metti la tua key ORS qui
+
+/* INIT */
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
 
 let user = null;
 let userLocation = null;
-let map = L.map('map',{zoomControl:false}).setView([40.85,14.27],6);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap'}).addTo(map);
+let currentPopupMarker = null;
 
-function toggleSidebar(){document.getElementById("sidebar").classList.toggle("active");}
-function showProfilePopup(){document.getElementById("profilePopup").style.display="block";document.getElementById("overlay").style.display="block";}
-function closeProfilePopup(){document.getElementById("profilePopup").style.display="none";document.getElementById("overlay").style.display="none";}
-function closeDownbar(){document.getElementById("downbar").style.display="none";}
+/* MAP */
+const map = L.map('map', { zoomControl:false }).setView([40.85,14.27], 6);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(map);
 
-// LOGIN
-auth.onAuthStateChanged(u=>{
-  if(!u) window.location.href="index.html";
-  user = u;
+/* UI refs */
+const sidebar = document.getElementById('sidebar');
+const hamburger = document.getElementById('hamburger');
+const searchInput = document.getElementById('searchInput');
+const searchBtn = document.getElementById('searchBtn');
+const gpsBtn = document.getElementById('gpsBtn');
+const placesList = document.getElementById('placesList');
+const profileImg = document.getElementById('profileImg');
+const downbar = document.getElementById('downbar');
+const downbarClose = document.getElementById('downbarClose');
+const cityName = document.getElementById('cityName');
+const cityInfo = document.getElementById('cityInfo');
+const cityImg = document.getElementById('cityImg');
+const cityStats = document.getElementById('cityStats');
+const toastEl = document.getElementById('toast');
 
-  // Carica immagine profilo da URL salvato su Firestore
-  db.collection("users").doc(user.uid).get().then(doc=>{
-    if(doc.exists){
-      const data = doc.data();
-      if(data.profileImage) document.getElementById("profileImg").src = data.profileImage;
-      else console.log("Nessuna immagine profilo");
-    }
-  }).catch(err=>console.error("Errore caricamento profilo:",err.message));
+/* small helpers */
+function showToast(t){
+  toastEl.textContent = t;
+  toastEl.style.display = 'block';
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(()=> toastEl.style.display='none', 2200);
+}
+function closeSidebar(){ sidebar.classList.add('sidebarHidden'); }
+function openSidebar(){ sidebar.classList.remove('sidebarHidden'); }
 
-  loadFavoritePlaces();
+/* toggle sidebar (hamburger) */
+hamburger.addEventListener('click', ()=> {
+  if(sidebar.classList.contains('sidebarHidden')) openSidebar(); else closeSidebar();
 });
 
-// GPS
-const gpsBtn = document.getElementById("gpsBtn");
+/* downbar close */
+downbarClose.addEventListener('click', ()=> downbar.style.display = 'none');
+
+/* GPS */
+gpsBtn.addEventListener('click', requestLocation);
 function requestLocation(){
-  if(navigator.geolocation){
-    navigator.geolocation.getCurrentPosition(pos=>{
-      userLocation = [pos.coords.latitude,pos.coords.longitude];
-      gpsBtn.textContent="Mostra dove sei";
-      map.setView(userLocation,15);
-      L.marker(userLocation).addTo(map).bindPopup("Sei qui").openPopup();
+  if(!navigator.geolocation){ alert('GPS non supportato'); return; }
+  navigator.geolocation.getCurrentPosition(pos=>{
+    userLocation = [pos.coords.latitude, pos.coords.longitude];
+    showToast('Posizione rilevata');
+    gpsBtn.textContent = 'Mostra dove sei';
+    map.setView(userLocation, 14);
+    L.circleMarker(userLocation, { radius:7, color: getComputedStyle(document.documentElement).getPropertyValue('--accent') || '#E515F6' }).addTo(map).bindPopup('Sei qui').openPopup();
+  }, err=> showToast('Permessi posizione negati'));
+}
+
+/* AUTH */
+auth.onAuthStateChanged(u => {
+  if(!u){ window.location.href = 'index.html'; return; }
+  user = u;
+  // read profileImage URL string from Firestore (users/{uid}.profileImage)
+  db.collection('users').doc(user.uid).get()
+    .then(doc => {
+      if(doc.exists && doc.data().profileImage){
+        profileImg.src = doc.data().profileImage;
+      } else {
+        // fallback avatar (SVG data URL or local img)
+        profileImg.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120"><rect fill="%23f6f6f9" width="100%" height="100%"/><text x="50%" y="55%" dominant-baseline="middle" text-anchor="middle" font-size="40" fill="%23d0d0d8">A</text></svg>';
+      }
+    }).catch(e => {
+      console.error('caricamento profileImage', e);
     });
-  }else alert("GPS non supportato");
+
+  // start listening favorite places
+  attachFavoritesListener();
+});
+
+/* FAVORITES: add & read & remove */
+/* Save a favorite place: creates a doc in users/{UID}/Maps with luogo:{name,lat,lon}, favorite:true */
+async function saveFavoritePlaceObj(name, lat, lon){
+  if(!user) return showToast('Devi essere loggato');
+  try{
+    await db.collection('users').doc(user.uid).collection('Maps').add({
+      luogo: { name: name, lat: lat, lon: lon },
+      favorite: true,
+      timestamp: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    showToast('Aggiunto ai preferiti');
+  } catch(e){ console.error(e); showToast('Errore salvataggio'); }
 }
 
-// Salvataggio preferiti
-function saveFavoritePlace(name,lat,lon){
-  if(!user) return;
-  db.collection("users").doc(user.uid).collection("Maps").add({
-    luogo:{name,lat,lon},
-    favorite:true,
-    timestamp:firebase.firestore.FieldValue.serverTimestamp()
-  }).then(()=>console.log("Luogo salvato:",name))
-  .catch(err=>console.error("Errore:",err.message));
-}
+/* Attach real-time listener */
+let favUnsub = null;
+function attachFavoritesListener(){
+  if(favUnsub) favUnsub();
+  favUnsub = db.collection('users').doc(user.uid).collection('Maps')
+    .where('favorite','==',true)
+    .orderBy('timestamp','desc')
+    .onSnapshot(snap => {
+      placesList.innerHTML = '';
+      snap.forEach(doc => {
+        const d = doc.data();
+        const id = doc.id;
+        const name = d.luogo && d.luogo.name ? d.luogo.name : 'Luogo';
+        const lat = d.luogo && d.luogo.lat ? d.luogo.lat : null;
+        const lon = d.luogo && d.luogo.lon ? d.luogo.lon : null;
 
-// Caricamento preferiti
-function loadFavoritePlaces(){
-  db.collection("users").doc(user.uid).collection("Maps")
-    .where("favorite","==",true)
-    .orderBy("timestamp","desc")
-    .onSnapshot(snapshot=>{
-      const list=document.getElementById("placesList");
-      list.innerHTML="";
-      snapshot.forEach(doc=>{
-        const data=doc.data().luogo;
-        const div=document.createElement("div");
-        div.className="place-item";
-        div.textContent=data.name;
-        div.onclick=()=> map.setView([data.lat,data.lon],14);
-        list.appendChild(div);
+        const item = document.createElement('div');
+        item.className = 'place-item';
+
+        const left = document.createElement('div'); left.className = 'place-left';
+        const title = document.createElement('div'); title.className = 'place-title'; title.textContent = name;
+        left.appendChild(title);
+
+        const actions = document.createElement('div'); actions.className = 'place-actions';
+        const goBtn = document.createElement('button'); goBtn.className = 'smallBtn'; goBtn.textContent = 'Vai';
+        goBtn.onclick = ()=> { if(lat && lon) map.setView([lat,lon],14); };
+
+        const delBtn = document.createElement('button'); delBtn.className = 'smallBtn'; delBtn.textContent = 'Elimina';
+        delBtn.onclick = async ()=> {
+          if(!confirm('Eliminare questo preferito?')) return;
+          try{
+            await db.collection('users').doc(user.uid).collection('Maps').doc(id).delete();
+            showToast('Preferito eliminato');
+          }catch(e){ console.error(e); showToast('Errore eliminazione'); }
+        };
+
+        actions.appendChild(goBtn); actions.appendChild(delBtn);
+        item.appendChild(left); item.appendChild(actions);
+        placesList.appendChild(item);
       });
-    });
+    }, err => console.error('fav listener', err));
 }
 
-// Ricerca città con Nominatim + percorsi OpenRouteService
-const ORS_API_KEY = "YOUR_OPENROUTESERVICE_KEY"; // Gratis su https://openrouteservice.org/
+/* SEARCH */
+searchBtn.addEventListener('click', searchPlace);
+searchInput.addEventListener('keyup', (e) => { if(e.key === 'Enter') searchPlace(); });
 
-function searchPlace(){
-  const q = document.getElementById("searchInput").value;
+async function searchPlace(){
+  const q = (searchInput.value || '').trim();
   if(!q) return;
+  try{
+    const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&addressdetails=1&limit=5`);
+    const data = await res.json();
+    if(!data || data.length === 0){ showToast('Nessun risultato'); return; }
+    const item = data[0];
+    const lat = parseFloat(item.lat), lon = parseFloat(item.lon);
+    map.setView([lat,lon], 13);
 
-  fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}`)
-    .then(res=>res.json())
-    .then(data=>{
-      if(data && data.length>0){
-        const city = data[0];
-        const lat = parseFloat(city.lat);
-        const lon = parseFloat(city.lon);
-        map.setView([lat,lon],12);
+    // remove previous popup marker
+    if(currentPopupMarker) { map.removeLayer(currentPopupMarker); currentPopupMarker = null; }
 
-        L.marker([lat,lon]).addTo(map)
-          .bindPopup(`<b>${city.display_name}</b><br><button onclick="saveFavoritePlace('${city.display_name}',${lat},${lon})">❤️ Preferito</button>`)
-          .openPopup();
+    // create marker with DOM popup (safe, no inline onclick with raw strings)
+    const marker = L.marker([lat,lon]).addTo(map);
+    currentPopupMarker = marker;
 
-        showDownbar(city);
+    // create DOM popup content
+    const popupDiv = document.createElement('div');
+    const title = document.createElement('div'); title.style.fontWeight='700'; title.style.marginBottom='6px';
+    title.textContent = item.display_name;
+    const favBtn = document.createElement('button'); favBtn.className = 'smallBtn'; favBtn.style.marginRight='6px';
+    favBtn.textContent = '❤️ Aggiungi ai preferiti';
+    favBtn.onclick = ()=> saveFavoritePlaceObj(item.display_name, lat, lon);
 
-        // Chiudi automaticamente sidebar
-        document.getElementById("sidebar").classList.remove("active");
-      } else alert("Nessun risultato trovato");
-    });
+    const infoBtn = document.createElement('button'); infoBtn.className = 'smallBtn'; infoBtn.textContent = 'Mostra info';
+    infoBtn.onclick = ()=> showDownbar(item);
+
+    popupDiv.appendChild(title); popupDiv.appendChild(favBtn); popupDiv.appendChild(infoBtn);
+
+    marker.bindPopup(popupDiv).openPopup();
+
+    // close sidebar automatically on mobile/after search
+    closeSidebar();
+
+    showToast('Risultato trovato');
+  } catch(e){
+    console.error(e);
+    showToast('Errore ricerca');
+  }
 }
 
-function showDownbar(city){
-  const lat=parseFloat(city.lat), lon=parseFloat(city.lon);
-  document.getElementById("cityName").textContent = city.display_name;
-  document.getElementById("cityInfo").textContent = `Lat: ${lat}, Lon: ${lon}`;
-  document.getElementById("cityImg").src = `https://source.unsplash.com/400x200/?${city.display_name}`;
-
+/* DOWnBAR: show info and calculate real routes via OpenRouteService */
+async function showDownbar(nominItem){
+  const lat = parseFloat(nominItem.lat), lon = parseFloat(nominItem.lon);
+  cityName.textContent = nomинItem_to_display(nominItem);
+  cityInfo.textContent = extractAddressInfo(nominItem);
+  // Unsplash quick photo (no key needed)
+  cityImg.src = `https://source.unsplash.com/800x400/?${encodeURIComponent(nominItem.display_name)}`;
+  cityStats.textContent = 'Calcolo percorsi...';
+  downbar.style.display = 'block';
+  // if no userLocation yet, ask user to enable
   if(!userLocation){
-    document.getElementById("cityStats").textContent="Concedi accesso GPS per vedere percorsi reali";
-    document.getElementById("downbar").style.display="block";
+    cityStats.textContent = 'Concedi accesso GPS per visualizzare percorsi reali verso questo luogo.';
     return;
   }
 
-  const modes=["foot-walking","cycling-regular","driving-car"];
-  let statsText="";
-  let completed=0;
-
-  modes.forEach(mode=>{
-    fetch(`https://api.openrouteservice.org/v2/directions/${mode}?api_key=${ORS_API_KEY}`,{
-      method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({coordinates:[[userLocation[1],userLocation[0]],[lon,lat]]})
-    }).then(r=>r.json())
-      .then(res=>{
-        if(res.routes && res.routes.length>0){
-          const duration=Math.round(res.routes[0].summary.duration/60);
-          let emoji="";
-          switch(mode){
-            case "foot-walking": emoji="🚶"; break;
-            case "cycling-regular": emoji="🚴"; break;
-            case "driving-car": emoji="🚗"; break;
-          }
-          statsText += `${emoji} ${duration} min | `;
-        }
-      }).finally(()=>{
-        completed++;
-        if(completed===modes.length){
-          statsText=statsText.slice(0,-3);
-          document.getElementById("cityStats").textContent=statsText;
-          document.getElementById("downbar").style.display="block";
-        }
+  const modes = [
+    {key:'foot-walking', emoji:'🚶'},
+    {key:'cycling-regular', emoji:'🚴'},
+    {key:'driving-car', emoji:'🚗'}
+  ];
+  let parts = [];
+  for(const m of modes){
+    try{
+      const body = { coordinates: [ [userLocation[1], userLocation[0]], [lon, lat] ] };
+      const r = await fetch(`https://api.openrouteservice.org/v2/directions/${m.key}`, {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json', 'Authorization': ORS_API_KEY },
+        body: JSON.stringify(body)
       });
-  });
+      const j = await r.json();
+      if(j && j.routes && j.routes.length){
+        const mins = Math.round(j.routes[0].summary.duration / 60);
+        const km = (j.routes[0].summary.distance / 1000).toFixed(1);
+        parts.push(`${m.emoji} ${mins} min (${km} km)`);
+      }
+    }catch(e){
+      console.warn('ORS error', e);
+    }
+  }
+  cityStats.textContent = parts.length ? parts.join('  |  ') : 'Percorsi non disponibili';
 }
+
+/* small helpers to extract nicer address & display */
+function extractAddressInfo(item){
+  // try to get address fields (postcode, state, country) from addressdetails if present
+  if(item.address){
+    const ad = item.address;
+    const cap = ad.postcode ? `CAP: ${ad.postcode}` : '';
+    const region = ad.state || ad.region || '';
+    const country = ad.country || '';
+    return [cap, region, country].filter(Boolean).join(' • ');
+  }
+  return `Lat: ${item.lat}, Lon: ${item.lon}`;
+}
+function nomинItem_to_display(item){
+  return item.display_name || (item.address && (item.address.city || item.address.town || item.address.village)) || 'Luogo';
+}
+
+/* ensure search result addressdetails included -> we requested addressdetails=1 above, but nominatim may or may not include address on some endpoints */
+
+/* small UX: close downbar if user clicks map */
+map.on('click', ()=> { downbar.style.display = 'none'; });
+
+/* Accessibility: allow pressing ESC to close downbar */
+document.addEventListener('keydown', (e)=> { if(e.key === 'Escape'){ downbar.style.display='none' }});
 </script>
 </body>
 </html>
