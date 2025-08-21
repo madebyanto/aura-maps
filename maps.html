@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aura Maps Mobile</title>
+
+<!-- Leaflet -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+
+<style>
+:root {
+  --accent: #E515F6;
+  --bg: #fff;
+  --text: #111;
+  --border: #ddd;
+  --radius: 12px;
+}
+
+html, body { margin:0; height:100%; font-family:Arial,sans-serif; }
+body { overflow:hidden; background: var(--bg); }
+
+.topbar {
+  display:flex; justify-content:space-between; align-items:center;
+  height:50px; padding:0 10px; background:#fff; border-bottom:1px solid var(--border);
+}
+.topbar img.profile {
+  width:36px; height:36px; border-radius:50%; cursor:pointer;
+}
+
+.toggleSidebar {
+  font-size:24px; color: var(--accent); cursor:pointer;
+}
+
+.sidebar {
+  position:absolute; top:50px; bottom:0; left:0; width:280px; background:#fff;
+  border-right:1px solid var(--border); transform:translateX(-100%); transition:0.3s;
+  display:flex; flex-direction:column; padding:10px; overflow-y:auto; z-index:1000;
+}
+.sidebar.active { transform:translateX(0); }
+
+.sidebar h3 { margin-top:0; color: var(--accent); }
+.sidebar input, .sidebar button { margin-top:5px; padding:8px; border-radius: var(--radius); border:1px solid #ccc; }
+.sidebar button.action { background: var(--accent); color:#fff; border:none; }
+
+.map { height: calc(100% - 50px); }
+
+#map { width:100%; height:100%; }
+
+.place-item { padding:8px; border:1px solid #ddd; border-radius: var(--radius); margin-bottom:6px; cursor:pointer; background:#fafafa; }
+.dialog { position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); background:#fff; padding:16px; border-radius: var(--radius); box-shadow:0 10px 25px rgba(0,0,0,0.2); display:none; z-index:2000; max-width:90%; }
+.dialog button { margin-top:10px; }
+.overlay { position:fixed; inset:0; background:rgba(0,0,0,0.3); display:none; z-index:1990; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <span class="toggleSidebar" onclick="toggleSidebar()">☰</span>
+  <img src="" class="profile" id="profileImg" onclick="showProfilePopup()" alt="Profile">
+</div>
+
+<div class="sidebar" id="sidebar">
+  <h3>Cerca luogo</h3>
+  <input type="text" id="searchInput" placeholder="Es. Napoli, Via Roma">
+  <button class="action" onclick="searchPlace()">Cerca</button>
+
+  <h3>I tuoi luoghi</h3>
+  <div id="placesList"></div>
+
+  <h3>Azioni rapide</h3>
+  <button class="action" onclick="goToMyLocation()">📍 La mia posizione</button>
+</div>
+
+<div class="map">
+  <div id="map"></div>
+</div>
+
+<div class="overlay" id="overlay"></div>
+<div class="dialog" id="profilePopup">
+  <p>Per gestire il tuo profilo, vai su <b>os.aurastudioitalia.it</b> o scarica <b>Aura+</b> su Google Play Store.</p>
+  <button onclick="closeProfilePopup()">Chiudi</button>
+</div>
+
+<script>
+// Firebase
+const firebaseConfig = {
+  apiKey: "AIzaSyDsrHAtIh5bsYDHa1wz0LMcmciChAoRikU",
+  authDomain: "myauraid-f03c6.firebaseapp.com",
+  projectId: "myauraid-f03c6",
+  storageBucket: "myauraid-f03c6.appspot.com",
+  messagingSenderId: "190478237725",
+  appId: "1:190478237725:web:0d39907473f511b85a06f4"
+};
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
+
+let user = null;
+const profileImg = document.getElementById("profileImg");
+
+// Redirect se non loggato
+auth.onAuthStateChanged(u=>{
+  if(!u){ window.location.href="index.html"; return; }
+  user = u;
+  if(u.photoURL) profileImg.src = u.photoURL;
+  loadPlaces();
+});
+
+// Sidebar toggle
+function toggleSidebar(){
+  document.getElementById("sidebar").classList.toggle("active");
+}
+
+// Profile popup
+function showProfilePopup(){
+  document.getElementById("profilePopup").style.display="block";
+  document.getElementById("overlay").style.display="block";
+}
+function closeProfilePopup(){
+  document.getElementById("profilePopup").style.display="none";
+  document.getElementById("overlay").style.display="none";
+}
+
+// Leaflet map
+let map = L.map('map').setView([40.85,14.27],6);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution:'© OpenStreetMap' }).addTo(map);
+
+function goToMyLocation(){
+  if(!navigator.geolocation){ alert("GPS non supportato"); return; }
+  navigator.geolocation.getCurrentPosition(pos=>{
+    const c=[pos.coords.latitude, pos.coords.longitude];
+    map.setView(c,15);
+    L.marker(c).addTo(map).bindPopup("Sei qui").openPopup();
+  });
+}
+
+// Ricerca luoghi (Nominatim o Google Maps API futura)
+function searchPlace(){
+  const q = document.getElementById("searchInput").value;
+  if(!q) return;
+  fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${q}`)
+    .then(res=>res.json())
+    .then(data=>{
+      if(data.length>0){
+        const p = data[0];
+        const lat=p.lat, lon=p.lon;
+        map.setView([lat, lon],14);
+        L.marker([lat,lon]).addTo(map).bindPopup(p.display_name).openPopup();
+        savePlace(p.display_name, lat, lon);
+      } else alert("Nessun risultato trovato");
+    });
+}
+
+// Salvataggio luoghi
+function savePlace(name,lat,lon){
+  if(!user) return;
+  db.collection("users").doc(user.uid).collection("places").add({name,lat,lon});
+}
+
+// Caricamento luoghi
+function loadPlaces(){
+  db.collection("users").doc(user.uid).collection("places")
+    .onSnapshot(snap=>{
+      const list = document.getElementById("placesList");
+      list.innerHTML="";
+      snap.forEach(doc=>{
+        const div = document.createElement("div");
+        div.className="place-item";
+        div.textContent = doc.data().name;
+        div.onclick=()=> map.setView([doc.data().lat, doc.data().lon],14);
+        list.appendChild(div);
+      });
+    });
+}
+</script>
+</body>
+</html>
