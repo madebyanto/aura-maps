@@ -25,7 +25,6 @@ body {
 }
 .logo { width:150px; margin-bottom:20px; }
 h1 { font-size:1.8em; margin-bottom:15px; font-weight:600; }
-h2 { margin-bottom:20px; font-weight:300; }
 form { display:flex; flex-direction:column; }
 input {
     padding:12px; margin:10px 0; border:1px solid #ddd;
@@ -64,8 +63,8 @@ auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL)
 window.onload = () => {
     auth.onAuthStateChanged(user => {
         if(user){
-            // Se loggato, reindirizza alla dashboard
-            window.location.href = "user_dashboard.html";
+            // Se loggato, vai direttamente a maps.html
+            window.location.href = "maps.html";
         }
     });
 };
@@ -89,15 +88,6 @@ window.onload = () => {
         <a href="#" id="forgot-password" style="color:#ffffff;">Ho dimenticato la password</a>
     </p>
 
-    <hr style="border:none; height:30px; background:transparent;">
-
-    <h2>Registrati</h2>
-    <form id="signup-form">
-        <input type="email" id="signup-email" placeholder="Email" required>
-        <input type="password" id="signup-password" placeholder="Password" required>
-        <button type="submit">Registrati</button>
-    </form>
-
     <p class="info">Se non hai un account, crealo su <a href="https://os.aurastudioitalia.it" target="_blank">os.aurastudioitalia.it</a> o scarica <b>Aura+</b> su Google Play Store.</p>
 </div>
 
@@ -115,7 +105,7 @@ document.getElementById('login-form').addEventListener('submit', e=>{
         .then(userCredential=>{
             const user = userCredential.user;
             if(user.emailVerified){
-                window.location.href = "user_dashboard.html";
+                window.location.href = "maps.html";
             } else {
                 showMessage("Devi prima verificare la tua email.");
                 auth.signOut();
@@ -124,27 +114,6 @@ document.getElementById('login-form').addEventListener('submit', e=>{
         .catch(err=>{
             console.error("Errore login", err.message);
             showMessage("Errore: " + err.message);
-        });
-});
-
-// SIGNUP (solo messaggio, non permette login diretto)
-document.getElementById('signup-form').addEventListener('submit', e=>{
-    e.preventDefault();
-    const email = document.getElementById('signup-email').value;
-    const password = document.getElementById('signup-password').value;
-
-    auth.createUserWithEmailAndPassword(email,password)
-        .then(userCredential=>{
-            const user = userCredential.user;
-            user.sendEmailVerification()
-                .then(()=> showMessage("Email di verifica inviata. Controlla la tua casella di posta."))
-                .catch(err=>console.error("Errore invio email verifica:",err.message));
-            db.collection("users").doc(user.uid).set({ saldo:15 });
-            auth.signOut();
-        })
-        .catch(err=>{
-            console.error("Errore registrazione", err.message);
-            showMessage("Errore: "+err.message);
         });
 });
 
