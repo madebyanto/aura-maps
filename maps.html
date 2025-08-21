@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Aura Maps</title>
+<title>Aura Maps Free</title>
 
 <!-- Leaflet -->
 <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
@@ -13,7 +13,6 @@
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
-<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-storage.js"></script>
 
 <style>
 :root { --accent:#E515F6; --bg:#fff; --text:#111; --border:#ddd; --radius:12px; }
@@ -22,7 +21,9 @@ body{overflow:hidden;background:var(--bg);}
 .topbar{display:flex;justify-content:space-between;align-items:center;height:50px;padding:0 10px;background:#fff;border-bottom:1px solid var(--border);}
 .topbar img.profile{width:36px;height:36px;border-radius:50%;cursor:pointer;}
 .toggleSidebar{font-size:24px;color:var(--accent);cursor:pointer;}
-.sidebar{position:absolute;top:50px;bottom:0;left:0;width:280px;background:#fff;border-right:1px solid var(--border);transform:translateX(-100%);transition:0.3s;display:flex;flex-direction:column;padding:10px;overflow-y:auto;z-index:1000;}
+.sidebar{position:absolute;top:50px;bottom:0;left:0;width:280px;background:#fff;border-right:1px solid var(--border);
+transform:translateX(-100%);transition:0.3s;display:flex;flex-direction:column;padding:10px;overflow-y:auto;z-index:1000;
+border-top-right-radius:var(--radius);border-bottom-right-radius:var(--radius);}
 .sidebar.active{transform:translateX(0);}
 .sidebar h3{margin-top:0;color:var(--accent);}
 .sidebar input,.sidebar button{margin-top:5px;padding:8px;border-radius:var(--radius);border:1px solid #ccc;}
@@ -30,8 +31,10 @@ body{overflow:hidden;background:var(--bg);}
 .map{height:calc(100% - 50px);}
 #map{width:100%;height:100%;}
 .place-item{padding:8px;border:1px solid #ddd;border-radius:var(--radius);margin-bottom:6px;cursor:pointer;background:#fafafa;}
-.downbar{position:fixed;bottom:0;left:0;width:100%;background:#fff;border-top:1px solid var(--border);padding:12px;display:none;z-index:1500;max-height:50%;overflow-y:auto;}
-.downbar img{width:100%;border-radius:var(--radius);margin-top:8px;}
+.downbar{position:fixed;bottom:0;left:0;width:100%;background:#fff;border-top:1px solid var(--border);padding:12px;display:none;z-index:1500;max-height:50%;overflow-y:auto;border-top-left-radius:var(--radius);border-top-right-radius:var(--radius);}
+.downbar-close{position:absolute;top:5px;right:10px;cursor:pointer;font-weight:bold;color:var(--accent);}
+.overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.3);display:none;z-index:1200;}
+.dialog{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;padding:20px;border-radius:var(--radius);z-index:1300;}
 </style>
 </head>
 <body>
@@ -56,6 +59,7 @@ body{overflow:hidden;background:var(--bg);}
 </div>
 
 <div class="downbar" id="downbar">
+  <span class="downbar-close" onclick="closeDownbar()">✖</span>
   <h3 id="cityName"></h3>
   <p id="cityInfo"></p>
   <img id="cityImg" src="">
@@ -63,7 +67,7 @@ body{overflow:hidden;background:var(--bg);}
 </div>
 
 <div class="overlay" id="overlay"></div>
-<div class="dialog" id="profilePopup">
+<div class="dialog" id="profilePopup" style="display:none;">
   <p>Per gestire il tuo profilo, vai su <b>os.aurastudioitalia.it</b> o scarica <b>Aura+</b> su Google Play Store.</p>
   <button onclick="closeProfilePopup()">Chiudi</button>
 </div>
@@ -80,29 +84,31 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
-const storage = firebase.storage();
 
 let user = null;
+let userLocation = null;
 let map = L.map('map',{zoomControl:false}).setView([40.85,14.27],6);
-
-// Tiles
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap'}).addTo(map);
 
-// Sidebar toggle
 function toggleSidebar(){document.getElementById("sidebar").classList.toggle("active");}
-
-// Profile popup
 function showProfilePopup(){document.getElementById("profilePopup").style.display="block";document.getElementById("overlay").style.display="block";}
 function closeProfilePopup(){document.getElementById("profilePopup").style.display="none";document.getElementById("overlay").style.display="none";}
+function closeDownbar(){document.getElementById("downbar").style.display="none";}
 
-// Login check
+// LOGIN
 auth.onAuthStateChanged(u=>{
   if(!u) window.location.href="index.html";
   user = u;
-  // Carica immagine da Storage
-  storage.ref(`users/${user.uid}/profileImage`).getDownloadURL()
-    .then(url=> document.getElementById("profileImg").src = url)
-    .catch(()=> console.log("Nessuna immagine profilo"));
+
+  // Carica immagine profilo da URL salvato su Firestore
+  db.collection("users").doc(user.uid).get().then(doc=>{
+    if(doc.exists){
+      const data = doc.data();
+      if(data.profileImage) document.getElementById("profileImg").src = data.profileImage;
+      else console.log("Nessuna immagine profilo");
+    }
+  }).catch(err=>console.error("Errore caricamento profilo:",err.message));
+
   loadFavoritePlaces();
 });
 
@@ -111,10 +117,10 @@ const gpsBtn = document.getElementById("gpsBtn");
 function requestLocation(){
   if(navigator.geolocation){
     navigator.geolocation.getCurrentPosition(pos=>{
+      userLocation = [pos.coords.latitude,pos.coords.longitude];
       gpsBtn.textContent="Mostra dove sei";
-      const c=[pos.coords.latitude,pos.coords.longitude];
-      map.setView(c,15);
-      L.marker(c).addTo(map).bindPopup("Sei qui").openPopup();
+      map.setView(userLocation,15);
+      L.marker(userLocation).addTo(map).bindPopup("Sei qui").openPopup();
     });
   }else alert("GPS non supportato");
 }
@@ -149,34 +155,76 @@ function loadFavoritePlaces(){
     });
 }
 
-// Ricerca città + downbar info
+// Ricerca città con Nominatim + percorsi OpenRouteService
+const ORS_API_KEY = "YOUR_OPENROUTESERVICE_KEY"; // Gratis su https://openrouteservice.org/
+
 function searchPlace(){
   const q = document.getElementById("searchInput").value;
   if(!q) return;
-  fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${q}`)
+
+  fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}`)
     .then(res=>res.json())
     .then(data=>{
-      if(data.length>0){
-        const city=data[0];
-        const lat=city.lat, lon=city.lon;
+      if(data && data.length>0){
+        const city = data[0];
+        const lat = parseFloat(city.lat);
+        const lon = parseFloat(city.lon);
         map.setView([lat,lon],12);
+
         L.marker([lat,lon]).addTo(map)
-          .bindPopup(`<b>${city.display_name}</b><br><button onclick="saveFavoritePlace('${city.display_name}',${lat},${lon})">❤️ Preferito</button>`).openPopup();
+          .bindPopup(`<b>${city.display_name}</b><br><button onclick="saveFavoritePlace('${city.display_name}',${lat},${lon})">❤️ Preferito</button>`)
+          .openPopup();
+
         showDownbar(city);
-      }else alert("Nessun risultato trovato");
+
+        // Chiudi automaticamente sidebar
+        document.getElementById("sidebar").classList.remove("active");
+      } else alert("Nessun risultato trovato");
     });
 }
 
-// Downbar info
 function showDownbar(city){
+  const lat=parseFloat(city.lat), lon=parseFloat(city.lon);
   document.getElementById("cityName").textContent = city.display_name;
-  document.getElementById("cityInfo").textContent = `Lat: ${city.lat}, Lon: ${city.lon}`;
+  document.getElementById("cityInfo").textContent = `Lat: ${lat}, Lon: ${lon}`;
   document.getElementById("cityImg").src = `https://source.unsplash.com/400x200/?${city.display_name}`;
-  
-  // Statistiche (simulazione percorsi)
-  document.getElementById("cityStats").innerHTML=
-    `🚶 A piedi: 20 min | 🚴 Bici: 10 min | 🚗 Auto: 5 min | 🚌 Bus: 8 min`;
-  document.getElementById("downbar").style.display="block";
+
+  if(!userLocation){
+    document.getElementById("cityStats").textContent="Concedi accesso GPS per vedere percorsi reali";
+    document.getElementById("downbar").style.display="block";
+    return;
+  }
+
+  const modes=["foot-walking","cycling-regular","driving-car"];
+  let statsText="";
+  let completed=0;
+
+  modes.forEach(mode=>{
+    fetch(`https://api.openrouteservice.org/v2/directions/${mode}?api_key=${ORS_API_KEY}`,{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({coordinates:[[userLocation[1],userLocation[0]],[lon,lat]]})
+    }).then(r=>r.json())
+      .then(res=>{
+        if(res.routes && res.routes.length>0){
+          const duration=Math.round(res.routes[0].summary.duration/60);
+          let emoji="";
+          switch(mode){
+            case "foot-walking": emoji="🚶"; break;
+            case "cycling-regular": emoji="🚴"; break;
+            case "driving-car": emoji="🚗"; break;
+          }
+          statsText += `${emoji} ${duration} min | `;
+        }
+      }).finally(()=>{
+        completed++;
+        if(completed===modes.length){
+          statsText=statsText.slice(0,-3);
+          document.getElementById("cityStats").textContent=statsText;
+          document.getElementById("downbar").style.display="block";
+        }
+      });
+  });
 }
 </script>
 </body>
