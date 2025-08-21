@@ -6,77 +6,60 @@
 <title>Aura Maps</title>
 
 <!-- Leaflet -->
-<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 
-<!-- Firebase -->
-<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+<!-- Firebase 8.10.0 -->
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-storage.js"></script>
 
 <style>
-:root {
-  --accent: #E515F6;
-  --bg: #fff;
-  --text: #111;
-  --border: #ddd;
-  --radius: 12px;
-}
-
-html, body { margin:0; height:100%; font-family:Arial,sans-serif; }
-body { overflow:hidden; background: var(--bg); }
-
-.topbar {
-  display:flex; justify-content:space-between; align-items:center;
-  height:50px; padding:0 10px; background:#fff; border-bottom:1px solid var(--border);
-}
-.topbar img.profile {
-  width:36px; height:36px; border-radius:50%; cursor:pointer;
-}
-.toggleSidebar {
-  font-size:24px; color: var(--accent); cursor:pointer;
-}
-
-.sidebar {
-  position:absolute; top:50px; bottom:0; left:0; width:280px; background:#fff;
-  border-right:1px solid var(--border); transform:translateX(-100%); transition:0.3s;
-  display:flex; flex-direction:column; padding:10px; overflow-y:auto; z-index:1000;
-}
-.sidebar.active { transform:translateX(0); }
-
-.sidebar h3 { margin-top:0; color: var(--accent); }
-.sidebar input, .sidebar button { margin-top:5px; padding:8px; border-radius: var(--radius); border:1px solid #ccc; }
-.sidebar button.action { background: var(--accent); color:#fff; border:none; }
-
-.map { height: calc(100% - 50px); }
-#map { width:100%; height:100%; }
-
-.place-item { padding:8px; border:1px solid #ddd; border-radius: var(--radius); margin-bottom:6px; cursor:pointer; background:#fafafa; }
-.dialog { position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); background:#fff; padding:16px; border-radius: var(--radius); box-shadow:0 10px 25px rgba(0,0,0,0.2); display:none; z-index:2000; max-width:90%; }
-.overlay { position:fixed; inset:0; background:rgba(0,0,0,0.3); display:none; z-index:1990; }
+:root { --accent:#E515F6; --bg:#fff; --text:#111; --border:#ddd; --radius:12px; }
+html,body{margin:0;height:100%;font-family:Arial,sans-serif;}
+body{overflow:hidden;background:var(--bg);}
+.topbar{display:flex;justify-content:space-between;align-items:center;height:50px;padding:0 10px;background:#fff;border-bottom:1px solid var(--border);}
+.topbar img.profile{width:36px;height:36px;border-radius:50%;cursor:pointer;}
+.toggleSidebar{font-size:24px;color:var(--accent);cursor:pointer;}
+.sidebar{position:absolute;top:50px;bottom:0;left:0;width:280px;background:#fff;border-right:1px solid var(--border);transform:translateX(-100%);transition:0.3s;display:flex;flex-direction:column;padding:10px;overflow-y:auto;z-index:1000;}
+.sidebar.active{transform:translateX(0);}
+.sidebar h3{margin-top:0;color:var(--accent);}
+.sidebar input,.sidebar button{margin-top:5px;padding:8px;border-radius:var(--radius);border:1px solid #ccc;}
+.sidebar button.action{background:var(--accent);color:#fff;border:none;}
+.map{height:calc(100% - 50px);}
+#map{width:100%;height:100%;}
+.place-item{padding:8px;border:1px solid #ddd;border-radius:var(--radius);margin-bottom:6px;cursor:pointer;background:#fafafa;}
+.downbar{position:fixed;bottom:0;left:0;width:100%;background:#fff;border-top:1px solid var(--border);padding:12px;display:none;z-index:1500;max-height:50%;overflow-y:auto;}
+.downbar img{width:100%;border-radius:var(--radius);margin-top:8px;}
 </style>
 </head>
 <body>
 
 <div class="topbar">
   <span class="toggleSidebar" onclick="toggleSidebar()">☰</span>
-  <img src="" class="profile" id="profileImg" onclick="showProfilePopup()" alt="Profile">
+  <img src="auraaccount.png" class="profile" id="profileImg" onclick="showProfilePopup()">
 </div>
 
 <div class="sidebar" id="sidebar">
-  <h3>Cerca luogo</h3>
-  <input type="text" id="searchInput" placeholder="Es. Napoli, Via Roma">
+  <h3>Cerca città</h3>
+  <input type="text" id="searchInput" placeholder="Es. Napoli">
   <button class="action" onclick="searchPlace()">Cerca</button>
-
-  <h3>I tuoi luoghi</h3>
+  <h3>I tuoi preferiti</h3>
   <div id="placesList"></div>
-
   <h3>Azioni rapide</h3>
-  <button class="action" onclick="goToMyLocation()">📍 La mia posizione</button>
+  <button class="action" id="gpsBtn" onclick="requestLocation()">📍 Usa GPS</button>
 </div>
 
 <div class="map">
   <div id="map"></div>
+</div>
+
+<div class="downbar" id="downbar">
+  <h3 id="cityName"></h3>
+  <p id="cityInfo"></p>
+  <img id="cityImg" src="">
+  <p id="cityStats"></p>
 </div>
 
 <div class="overlay" id="overlay"></div>
@@ -86,7 +69,6 @@ body { overflow:hidden; background: var(--bg); }
 </div>
 
 <script>
-// Firebase
 const firebaseConfig = {
   apiKey: "AIzaSyDsrHAtIh5bsYDHa1wz0LMcmciChAoRikU",
   authDomain: "myauraid-f03c6.firebaseapp.com",
@@ -98,47 +80,76 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
+const storage = firebase.storage();
 
 let user = null;
-const profileImg = document.getElementById("profileImg");
+let map = L.map('map',{zoomControl:false}).setView([40.85,14.27],6);
 
-// Redirect se non loggato
-auth.onAuthStateChanged(u=>{
-  if(!u){ window.location.href="index.html"; return; }
-  user = u;
-  if(u.photoURL) profileImg.src = u.photoURL;
-  loadPlaces();
-});
+// Tiles
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap'}).addTo(map);
 
 // Sidebar toggle
-function toggleSidebar(){
-  document.getElementById("sidebar").classList.toggle("active");
-}
+function toggleSidebar(){document.getElementById("sidebar").classList.toggle("active");}
 
 // Profile popup
-function showProfilePopup(){
-  document.getElementById("profilePopup").style.display="block";
-  document.getElementById("overlay").style.display="block";
-}
-function closeProfilePopup(){
-  document.getElementById("profilePopup").style.display="none";
-  document.getElementById("overlay").style.display="none";
+function showProfilePopup(){document.getElementById("profilePopup").style.display="block";document.getElementById("overlay").style.display="block";}
+function closeProfilePopup(){document.getElementById("profilePopup").style.display="none";document.getElementById("overlay").style.display="none";}
+
+// Login check
+auth.onAuthStateChanged(u=>{
+  if(!u) window.location.href="index.html";
+  user = u;
+  // Carica immagine da Storage
+  storage.ref(`users/${user.uid}/profileImage`).getDownloadURL()
+    .then(url=> document.getElementById("profileImg").src = url)
+    .catch(()=> console.log("Nessuna immagine profilo"));
+  loadFavoritePlaces();
+});
+
+// GPS
+const gpsBtn = document.getElementById("gpsBtn");
+function requestLocation(){
+  if(navigator.geolocation){
+    navigator.geolocation.getCurrentPosition(pos=>{
+      gpsBtn.textContent="Mostra dove sei";
+      const c=[pos.coords.latitude,pos.coords.longitude];
+      map.setView(c,15);
+      L.marker(c).addTo(map).bindPopup("Sei qui").openPopup();
+    });
+  }else alert("GPS non supportato");
 }
 
-// Leaflet map
-let map = L.map('map', { zoomControl: false }).setView([40.85,14.27],6);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution:'© OpenStreetMap' }).addTo(map);
-
-function goToMyLocation(){
-  if(!navigator.geolocation){ alert("GPS non supportato"); return; }
-  navigator.geolocation.getCurrentPosition(pos=>{
-    const c=[pos.coords.latitude, pos.coords.longitude];
-    map.setView(c,15);
-    L.marker(c).addTo(map).bindPopup("Sei qui").openPopup();
-  });
+// Salvataggio preferiti
+function saveFavoritePlace(name,lat,lon){
+  if(!user) return;
+  db.collection("users").doc(user.uid).collection("Maps").add({
+    luogo:{name,lat,lon},
+    favorite:true,
+    timestamp:firebase.firestore.FieldValue.serverTimestamp()
+  }).then(()=>console.log("Luogo salvato:",name))
+  .catch(err=>console.error("Errore:",err.message));
 }
 
-// Ricerca luoghi (Nominatim)
+// Caricamento preferiti
+function loadFavoritePlaces(){
+  db.collection("users").doc(user.uid).collection("Maps")
+    .where("favorite","==",true)
+    .orderBy("timestamp","desc")
+    .onSnapshot(snapshot=>{
+      const list=document.getElementById("placesList");
+      list.innerHTML="";
+      snapshot.forEach(doc=>{
+        const data=doc.data().luogo;
+        const div=document.createElement("div");
+        div.className="place-item";
+        div.textContent=data.name;
+        div.onclick=()=> map.setView([data.lat,data.lon],14);
+        list.appendChild(div);
+      });
+    });
+}
+
+// Ricerca città + downbar info
 function searchPlace(){
   const q = document.getElementById("searchInput").value;
   if(!q) return;
@@ -146,41 +157,26 @@ function searchPlace(){
     .then(res=>res.json())
     .then(data=>{
       if(data.length>0){
-        const p = data[0];
-        const lat=p.lat, lon=p.lon;
-        map.setView([lat, lon],14);
-        L.marker([lat,lon]).addTo(map).bindPopup(p.display_name).openPopup();
-        savePlace(p.display_name, lat, lon);
-      } else alert("Nessun risultato trovato");
+        const city=data[0];
+        const lat=city.lat, lon=city.lon;
+        map.setView([lat,lon],12);
+        L.marker([lat,lon]).addTo(map)
+          .bindPopup(`<b>${city.display_name}</b><br><button onclick="saveFavoritePlace('${city.display_name}',${lat},${lon})">❤️ Preferito</button>`).openPopup();
+        showDownbar(city);
+      }else alert("Nessun risultato trovato");
     });
 }
 
-// Salvataggio luoghi su users/{UID}/Maps.luogo
-function savePlace(name, lat, lon){
-  if(!user) return;
-  db.collection("users").doc(user.uid).collection("Maps").add({
-      luogo: { name: name, lat: lat, lon: lon },
-      timestamp: firebase.firestore.FieldValue.serverTimestamp()
-  }).then(()=> console.log("Luogo salvato:", name))
-    .catch(err=> console.error("Errore salvataggio luogo:", err.message));
-}
-
-// Caricamento luoghi
-function loadPlaces(){
-  db.collection("users").doc(user.uid).collection("Maps")
-    .orderBy("timestamp","desc")
-    .onSnapshot(snap=>{
-      const list = document.getElementById("placesList");
-      list.innerHTML="";
-      snap.forEach(doc=>{
-        const data = doc.data().luogo;
-        const div = document.createElement("div");
-        div.className="place-item";
-        div.textContent = data.name;
-        div.onclick=()=> map.setView([data.lat, data.lon],14);
-        list.appendChild(div);
-      });
-    });
+// Downbar info
+function showDownbar(city){
+  document.getElementById("cityName").textContent = city.display_name;
+  document.getElementById("cityInfo").textContent = `Lat: ${city.lat}, Lon: ${city.lon}`;
+  document.getElementById("cityImg").src = `https://source.unsplash.com/400x200/?${city.display_name}`;
+  
+  // Statistiche (simulazione percorsi)
+  document.getElementById("cityStats").innerHTML=
+    `🚶 A piedi: 20 min | 🚴 Bici: 10 min | 🚗 Auto: 5 min | 🚌 Bus: 8 min`;
+  document.getElementById("downbar").style.display="block";
 }
 </script>
 </body>
