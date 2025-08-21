@@ -47,11 +47,14 @@ ul li { padding:4px 0; cursor:pointer; border-bottom:1px solid #eee; }
 <div id="downbar">
     <button class="close">&times;</button>
     <div id="downbarContent"></div>
+    <button id="addFavoriteBtn">Aggiungi ai preferiti</button>
 </div>
 
 <div id="map"></div>
 
 <script>
+const ORS_API_KEY = "eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImUwYzIxYjc2ZmQyNTRiYzY4YTUxNTVlNmIyOGViNDJmIiwiaCI6Im11cm11cjY0In0="; // <- metti qui la tua ORS key
+
 const firebaseConfig = {
     apiKey: "AIzaSyDsrHAtIh5bsYDHa1wz0LMcmciChAoRikU",
     authDomain: "myauraid-f03c6.firebaseapp.com",
@@ -73,6 +76,9 @@ const downbarContent = document.getElementById('downbarContent');
 const favoritesList = document.getElementById('favoritesList');
 const searchCity = document.getElementById('searchCity');
 const searchBtn = document.getElementById('searchBtn');
+const addFavoriteBtn = document.getElementById('addFavoriteBtn');
+
+let currentPlace = null;
 
 auth.onAuthStateChanged(async u => {
     if(!u){ window.location.href='index.html'; return; }
@@ -81,7 +87,6 @@ auth.onAuthStateChanged(async u => {
     const userDocRef = db.collection('users').doc(user.uid);
     const mapsColRef = userDocRef.collection('Maps');
 
-    // crea Maps se non esiste
     const snapshot = await mapsColRef.limit(1).get();
     if(snapshot.empty){
         await mapsColRef.add({ luogo:{}, favorite:false, timestamp:firebase.firestore.FieldValue.serverTimestamp() });
@@ -115,12 +120,13 @@ function attachFavoritesListener(){
 }
 
 function showDownbar(luogo){
+    currentPlace = luogo;
     downbarContent.innerHTML='';
     if(luogo.cap!==undefined){ // città
         downbarContent.innerHTML=`
             <h4>${luogo.name}</h4>
             <p>${luogo.cap}, ${luogo.region || ''}, ${luogo.country || ''}</p>
-            <p>Camminando: ${luogo.walk||'-'} min, Bici: ${luogo.bike||'-'} min, Auto: ${luogo.car||'-'} min, Bus: ${luogo.bus||'-'} min</p>
+            <p>Piede: ${luogo.walk||'-'} min, Bici: ${luogo.bike||'-'} min, Auto: ${luogo.car||'-'} min, Bus: ${luogo.bus||'-'} min</p>
             <img src="${luogo.photo||''}" style="width:100%; border-radius:var(--radius); margin-top:8px;">
         `;
     } else { // POI
@@ -133,6 +139,18 @@ function showDownbar(luogo){
     }
     downbar.style.display='block';
 }
+
+/* aggiungi ai preferiti */
+addFavoriteBtn.addEventListener('click', async ()=>{
+    if(!currentPlace) return;
+    const mapsColRef = db.collection('users').doc(user.uid).collection('Maps');
+    await mapsColRef.add({
+        luogo: currentPlace,
+        favorite:true,
+        timestamp:firebase.firestore.FieldValue.serverTimestamp()
+    });
+    alert("Luogo aggiunto ai preferiti!");
+});
 
 /* MAP */
 let map = L.map('map').setView([41.9, 12.5], 5);
@@ -157,7 +175,7 @@ locBtn.addEventListener('click', ()=>{
     } else alert('Geolocalizzazione non supportata');
 });
 
-/* CERCA CITTA */
+/* CERCA CITTA + tempi ORS */
 searchBtn.addEventListener('click', async ()=>{
     const city = searchCity.value.trim();
     if(!city) return;
@@ -167,21 +185,40 @@ searchBtn.addEventListener('click', async ()=>{
     const data = await res.json();
     if(data.length){
         const cityData = data[0];
+        const lat = cityData.lat;
+        const lon = cityData.lon;
+
+        // calcola percorsi ORS (dal centro mappa attuale)
+        let routes = {walk:'-', bike:'-', car:'-', bus:'-'};
+        try{
+            const start = map.getCenter();
+            const modes = {walk:'foot-walking', bike:'cycling-regular', car:'driving-car', bus:'driving-hgv'};
+            for(let m in modes){
+                const orsRes = await fetch("https://api.openrouteservice.org/v2/directions/"+modes[m],{
+                    method:"POST",
+                    headers:{"Authorization":ORS_API_KEY,"Content-Type":"application/json"},
+                    body: JSON.stringify({coordinates:[[start.lng,start.lat],[lon,lat]]})
+                });
+                const orsData = await orsRes.json();
+                routes[m] = Math.round((orsData.features[0].properties.summary.duration)/60);
+            }
+        }catch(e){console.log(e);}
+
         const luogo = {
             name: cityData.display_name,
-            lat: cityData.lat,
-            lon: cityData.lon,
+            lat, lon,
             cap: cityData.postcode || '',
             region: cityData.state || '',
             country: cityData.country || '',
-            walk:'-', bike:'-', car:'-', bus:'-', photo:''
+            walk:routes.walk, bike:routes.bike, car:routes.car, bus:routes.bus,
+            photo:''
         };
         showDownbar(luogo);
-        map.setView([luogo.lat, luogo.lon], 12);
+        map.setView([lat, lon], 12);
     }
 });
 
-/* CARICA POI AUTOMATICAMENTE */
+/* CARICA POI */
 async function loadPOI(){
     const bbox = map.getBounds();
     const query = `
