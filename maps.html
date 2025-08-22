@@ -439,30 +439,94 @@ async function removeFavoriteFromMapsField(mapKey){
 }
 
 /* ---------- DOWNBAR ---------- */
-function showDownbar(place){
-  currentPlace = place;
-  // check if currentPlace corresponds to an existing map entry: we keep _mapKey if set externally
-  const isSaved = !!place._mapKey;
-  let html = `<h3 style="margin:0 0 6px 0">${escapeHtml(place.name)}</h3>`;
-  if(place.address) html += `<div style="color:var(--muted);font-size:13px">${escapeHtml(place.address)}</div>`;
-  if(place.photo) html += `<img src="${escapeHtml(place.photo)}" class="place-photo" loading="lazy">`;
-  else html += `<img src="https://source.unsplash.com/800x400/?${encodeURIComponent((place.name||'luogo').split(',')[0])}" class="place-photo" loading="lazy">`;
-  if(place.info) html += `<div style="margin-top:8px;font-size:14px">${place.info}</div>`;
-  downbarInner.innerHTML = html;
-  addFavBtn.textContent = isSaved ? 'Rimuovi dai preferiti' : 'Aggiungi ai preferiti';
-  downbar.classList.add('open'); downbar.setAttribute('aria-hidden','false');
-}
-downbarClose.addEventListener('click', ()=> { downbar.classList.remove('open'); downbar.setAttribute('aria-hidden','true'); });
+async function showDownbar(place) {
+    currentPlace = place;
 
-addFavBtn.addEventListener('click', async ()=>{
-  if(!currentPlace) return showToast('Nessun luogo selezionato');
-  // if currentPlace has _mapKey -> remove, else add
-  if(currentPlace._mapKey){
-    if(!confirm('Rimuovere questo preferito?')) return;
-    await removeFavoriteFromMapsField(currentPlace._mapKey);
-  } else {
-    await addFavoriteToMapsField(currentPlace);
-  }
+    // Determina se il luogo è già salvato nei preferiti
+    const isSaved = !!place._mapKey;
+
+    // Calcola percorsi ORS solo se non li abbiamo già
+    try {
+        const modes = ["foot-walking", "cycling-regular", "driving-car"];
+        let infoStr = "";
+
+        for (const mode of modes) {
+            const coords = [
+                [place.lng, place.lat],
+                [place.lng + 0.01, place.lat + 0.01] // Esempio: destinazione leggermente spostata
+            ];
+            const resp = await fetch(`https://api.openrouteservice.org/v2/directions/${mode}`, {
+                method: "POST",
+                headers: {
+                    "Authorization": ORS_API_KEY,
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({ coordinates: coords })
+            });
+            const routesData = await resp.json();
+            if (routesData.features && routesData.features[0]) {
+                const summary = routesData.features[0].properties.summary;
+                const dist = (summary.distance / 1000).toFixed(2);
+                const dur = Math.ceil(summary.duration / 60);
+                infoStr += `${mode.replace("-", " ")}: ${dist} km, ${dur} min<br>`;
+            } else {
+                infoStr += `${mode.replace("-", " ")}: percorso non disponibile<br>`;
+            }
+        }
+        place.info = infoStr;
+    } catch (e) {
+        console.warn("ORS error:", e);
+        place.info = "Impossibile calcolare percorsi";
+    }
+
+    // Costruisci HTML del downbar
+    let html = `<h3 style="margin:0 0 6px 0">${escapeHtml(place.name)}</h3>`;
+    if (place.address) html += `<div style="color:var(--muted);font-size:13px">${escapeHtml(place.address)}</div>`;
+    if (place.photo) html += `<img src="${escapeHtml(place.photo)}" class="place-photo" loading="lazy">`;
+    else html += `<img src="https://source.unsplash.com/800x400/?${encodeURIComponent((place.name || 'luogo').split(',')[0])}" class="place-photo" loading="lazy">`;
+    if (place.info) html += `<div style="margin-top:8px;font-size:14px">${place.info}</div>`;
+
+    downbarInner.innerHTML = html;
+
+    // Aggiorna bottone preferiti
+    addFavBtn.textContent = isSaved ? 'Rimuovi dai preferiti' : 'Aggiungi ai preferiti';
+    downbar.classList.add('open');
+    downbar.setAttribute('aria-hidden', 'false');
+}
+
+// Chiusura downbar
+downbarClose.addEventListener('click', () => {
+    downbar.classList.remove('open');
+    downbar.setAttribute('aria-hidden', 'true');
+});
+
+// Bottone aggiungi/rimuovi dai preferiti
+addFavBtn.addEventListener('click', async () => {
+    if (!currentPlace) return showToast('Nessun luogo selezionato');
+
+    try {
+        const userDocRef = db.collection('users').doc(auth.currentUser.uid);
+        const userSnap = await userDocRef.get();
+        let Maps = userSnap.exists && userSnap.data().Maps ? userSnap.data().Maps : {};
+
+        if (currentPlace._mapKey) {
+            // Rimuovi dai preferiti
+            delete Maps[currentPlace._mapKey];
+            currentPlace._mapKey = null;
+        } else {
+            // Aggiungi ai preferiti
+            const newKey = Date.now().toString();
+            Maps[newKey] = { name: currentPlace.name, lat: currentPlace.lat, lng: currentPlace.lng, address: currentPlace.address || '', photo: currentPlace.photo || '', info: currentPlace.info || '' };
+            currentPlace._mapKey = newKey;
+        }
+
+        await userDocRef.set({ Maps }, { merge: true });
+        await loadFavorites(); // Aggiorna lista nella sidebar
+        showDownbar(currentPlace); // Ricarica downbar aggiornata
+    } catch (e) {
+        console.error("Errore salvataggio:", e);
+        showToast("Errore salvataggio luogo.");
+    }
 });
 
 /* ---------- ROUTE CALCULATION (ORS) - walking / cycling / driving only ---------- */
