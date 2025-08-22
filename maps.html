@@ -47,7 +47,7 @@ html,body{height:100%;margin:0;font-family:'Poppins',sans-serif;background:var(-
 
 <header class="topbar">
   <div class="brand"><span id="hamburger" class="hamburger">☰</span><span>AuraMaps</span></div>
-  <!-- Usiamo l'id che hai mostrato nell'esempio -->
+  <!-- id profile-img esattamente come richiesto -->
   <img id="profile-img" class="profile-img" src="default-profile.png" alt="Immagine del profilo">
 </header>
 
@@ -90,8 +90,10 @@ html,body{height:100%;margin:0;font-family:'Poppins',sans-serif;background:var(-
 <div id="toast" class="toast"></div>
 
 <script>
-/* ---------- CONFIG ---------- */
-const eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImUwYzIxYjc2ZmQyNTRiYzY4YTUxNTVlNmIyOGViNDJmIiwiaCI6Im11cm11cjY0In0= = ""; // opzionale
+/* ========== CONFIG ========== */
+/* Hai fornito questa ORS key; la inserisco qui */
+const ORS_API_KEY = "eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImUwYzIxYjc2ZmQyNTRiYzY4YTUxNTVlNmIyOGViNDJmIiwiaCI6Im11cm11cjY0In0=";
+
 const firebaseConfig = {
   apiKey: "AIzaSyDsrHAtIh5bsYDHa1wz0LMcmciChAoRikU",
   authDomain: "myauraid-f03c6.firebaseapp.com",
@@ -100,11 +102,13 @@ const firebaseConfig = {
   messagingSenderId: "190478237725",
   appId: "1:190478237725:web:0d39907473f511b85a06f4"
 };
+/* ====================================== */
+
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
 
-/* ---------- UI refs ---------- */
+/* UI refs */
 const profileImg = document.getElementById('profile-img');
 const hamburger = document.getElementById('hamburger');
 const sidebar = document.getElementById('sidebar');
@@ -121,17 +125,16 @@ const toast = document.getElementById('toast');
 const poiToggle = document.getElementById('poiToggle');
 const poiToggleLabel = document.getElementById('poiToggleLabel');
 
-/* ---------- state ---------- */
 let currentUser = null;
 let map = null;
 let poiMarkers = [];
 let currentPlace = null;
 let favoritesUnsub = null;
 let overpassController = null;
-let showPOI = (localStorage.getItem('aura_show_poi') === '1'); // persist
+let showPOI = (localStorage.getItem('aura_show_poi') === '1');
 
-/* ---------- helpers ---------- */
-function showToast(msg, ms=2000){ toast.textContent = msg; toast.style.display = 'block'; clearTimeout(showToast._t); showToast._t = setTimeout(()=> toast.style.display='none', ms); }
+/* helpers */
+function showToast(msg, ms=2200){ toast.textContent = msg; toast.style.display = 'block'; clearTimeout(showToast._t); showToast._t = setTimeout(()=> toast.style.display='none', ms); }
 function escapeHtml(s){ if(!s) return ''; return String(s).replace(/[&<>"']/g, (m)=> ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
 function sanitizePlace(place){
   return {
@@ -144,68 +147,65 @@ function sanitizePlace(place){
   };
 }
 
-/* ---------- AUTH ---------- */
-auth.onAuthStateChanged(async (u) => {
+/* AUTH check */
+auth.onAuthStateChanged(async (u)=>{
   if(!u){ window.location.href='index.html'; return; }
   currentUser = u;
-  await loadProfileImage();
+  await loadProfileImage();        // setta profile-img.src correttamente
   initMap();
   attachFavoritesListener();
-  // init poi toggle UI
   poiToggle.checked = showPOI;
   poiToggleLabel.textContent = showPOI ? 'Sì' : 'No';
 });
 
-/* ---------- PROFILE IMAGE ---------- */
+/* PROFILE IMAGE: prendi stringa da users/{UID}/profileImage */
 async function loadProfileImage(){
   try{
     const docRef = db.collection('users').doc(currentUser.uid);
     const snap = await docRef.get();
     if(!snap.exists){
-      // create minimal doc with fallback profileImage
+      // crea doc minimale
       await docRef.set({ profileImage: "https://aurastudioitalia.it/antogalaxyavatar.png" }, { merge:true });
       profileImg.src = "https://aurastudioitalia.it/antogalaxyavatar.png";
       return;
     }
-    const userData = snap.data() || {};
-    // EXACT: set src to the string stored in profileImage, fallback otherwise
-    const profileImageURL = userData.profileImage || 'https://aurastudioitalia.it/antogalaxyavatar.png';
-    profileImg.src = profileImageURL;
+    const data = snap.data() || {};
+    // imposta src ESATTAMENTE con la stringa in profileImage (fallback)
+    profileImg.src = (typeof data.profileImage === 'string' && data.profileImage.trim().length) ? data.profileImage : "https://aurastudioitalia.it/antogalaxyavatar.png";
   }catch(e){
     console.error('loadProfileImage err', e);
-    profileImg.src = 'https://aurastudioitalia.it/antogalaxyavatar.png';
+    profileImg.src = "https://aurastudioitalia.it/antogalaxyavatar.png";
   }
 }
-profileImg.addEventListener('error', ()=> { profileImg.src = 'https://aurastudioitalia.it/antogalaxyavatar.png'; });
+profileImg.addEventListener('error', ()=> { profileImg.src = "https://aurastudioitalia.it/antogalaxyavatar.png"; });
 profileImg.addEventListener('click', ()=> alert("Per gestire il tuo profilo, vai su os.aurastudioitalia.it o scarica Aura+ su Google Play Store."));
 
-/* ---------- SIDEBAR ---------- */
+/* SIDEBAR toggle */
 hamburger.addEventListener('click', ()=> sidebar.classList.toggle('open'));
 
-/* POI toggle */
+/* POI toggle persistente */
 poiToggle.addEventListener('change', ()=>{
   showPOI = poiToggle.checked;
   localStorage.setItem('aura_show_poi', showPOI ? '1':'0');
   poiToggleLabel.textContent = showPOI ? 'Sì' : 'No';
   if(!showPOI) clearPOIMarkers();
-  else {
-    if(map && map.getZoom() >= 13) loadPOI();
-  }
+  else if(map && map.getZoom() >= 13) loadPOI();
 });
 
-/* ---------- MAP ---------- */
+/* MAP init */
 function initMap(){
   if(map) return;
   map = L.map('map', { zoomControl:false }).setView([45.4642, 9.19], 12);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution:'© OpenStreetMap contributors' }).addTo(map);
 
+  // load POI on moveend, throttle; only when showPOI true and zoom >=13
   map.on('moveend', debounce(()=> {
     if(!showPOI) return;
     if(map.getZoom() < 13){ clearPOIMarkers(); return; }
     const b = map.getBounds();
     const latSpan = Math.abs(b.getNorth() - b.getSouth());
     const lngSpan = Math.abs(b.getEast() - b.getWest());
-    if(latSpan > 1.4 || lngSpan > 2.0){ clearPOIMarkers(); showToast('Zoom avanti per vedere POI'); return; }
+    if(latSpan > 1.4 || lngSpan > 2.0){ clearPOIMarkers(); showToast('Avvicinati per caricare POI'); return; }
     loadPOI();
   }, 700));
 
@@ -213,7 +213,7 @@ function initMap(){
     try{
       const lat = e.latlng.lat, lon = e.latlng.lng;
       const resp = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`);
-      if(!resp.ok) throw new Error('reverse failed');
+      if(!resp.ok) throw new Error('Reverse failed');
       const data = await resp.json();
       const name = data.display_name || `Posizione ${lat.toFixed(5)}, ${lon.toFixed(5)}`;
       const place = { name, address: data.display_name || '', lat, lng: lon, photo:'', info:'', isFavorite:false };
@@ -225,13 +225,14 @@ function initMap(){
   });
 }
 
-/* ---------- POI (Overpass) with AbortController ---------- */
+/* clear POI & abort */
 function clearPOIMarkers(){
   poiMarkers.forEach(m => { try{ map.removeLayer(m); }catch(e){} });
   poiMarkers = [];
   if(overpassController){ try{ overpassController.abort(); }catch(e){} overpassController = null; }
 }
 
+/* load POI using Overpass (throttled + abortable) */
 async function loadPOI(){
   if(!showPOI) return;
   clearPOIMarkers();
@@ -247,9 +248,8 @@ async function loadPOI(){
 out center 120;`;
 
   overpassController = new AbortController();
-  const signal = overpassController.signal;
   try{
-    const res = await fetch('https://overpass-api.de/api/interpreter', { method:'POST', body:q, signal });
+    const res = await fetch('https://overpass-api.de/api/interpreter', { method:'POST', body: q, signal: overpassController.signal });
     if(!res.ok) throw new Error('Overpass error');
     const json = await res.json();
     const elements = json.elements || [];
@@ -270,16 +270,14 @@ out center 120;`;
   }catch(err){
     if(err.name === 'AbortError'){ console.log('Overpass aborted'); return; }
     console.warn('loadPOI err', err);
-  }finally{
-    overpassController = null;
-  }
+  }finally{ overpassController = null; }
 }
 
-/* ---------- FAVORITES (subcollection) ---------- */
+/* FAVORITES listener (subcollection users/{uid}/Maps) */
 function attachFavoritesListener(){
-  const col = db.collection('users').doc(currentUser.uid).collection('Maps').orderBy('timestamp','desc');
+  const colRef = db.collection('users').doc(currentUser.uid).collection('Maps').orderBy('timestamp','desc');
   if(favoritesUnsub) favoritesUnsub();
-  favoritesUnsub = col.onSnapshot(snapshot=>{
+  favoritesUnsub = colRef.onSnapshot(snapshot=>{
     favoritesList.innerHTML = '';
     if(snapshot.empty){ favoritesList.innerHTML = '<div style="color:var(--muted);padding:8px">Nessun preferito</div>'; return; }
     snapshot.forEach(doc => {
@@ -310,24 +308,25 @@ function attachFavoritesListener(){
   }, err => console.error('favorites listener', err));
 }
 
-/* ---------- ADD FAVORITE (SANITIZED) ---------- */
+/* ADD favorite sanitized */
 async function addFavorite(place){
   if(!place) return showToast('Nessun luogo selezionato');
   const p = sanitizePlace(place);
-  if(!isFinite(p.lat) || !isFinite(p.lng) || !p.name){ return showToast('Luogo non valido'); }
+  if(!isFinite(p.lat) || !isFinite(p.lng) || !p.name) return showToast('Luogo non valido');
   try{
+    // salva nella sottocollezione Maps -> documento con campo "luogo"
     const doc = { luogo: p, timestamp: firebase.firestore.FieldValue.serverTimestamp() };
     await db.collection('users').doc(currentUser.uid).collection('Maps').add(doc);
     showToast('Preferito aggiunto');
   }catch(e){
     console.error('addFavorite error', e);
-    // mostra messaggio più descrittivo
+    // messaggio utile: se permission-denied probabilmente regole Firestore
     const msg = e && e.message ? e.message : 'Errore salvataggio';
-    showToast('Errore salvataggio: ' + msg, 4000);
+    showToast('Errore salvataggio: ' + msg, 5000);
   }
 }
 
-/* ---------- DOWNBAR ---------- */
+/* DOWNBAR show/close */
 function showDownbar(place){
   currentPlace = place;
   let html = `<h3 style="margin:0 0 6px 0">${escapeHtml(place.name)}</h3>`;
@@ -346,7 +345,7 @@ addFavBtn.addEventListener('click', async ()=> {
   await addFavorite(currentPlace);
 });
 
-/* NAV: ORS estimates (optional) */
+/* NAV (ORS estimates) */
 navBtn.addEventListener('click', ()=> {
   if(!currentPlace) return showToast('Seleziona prima un luogo');
   if(!navigator.geolocation) return showToast('Abilita la geolocalizzazione');
@@ -363,7 +362,7 @@ navBtn.addEventListener('click', ()=> {
           headers:{ 'Content-Type':'application/json', 'Authorization': ORS_API_KEY },
           body: JSON.stringify({ coordinates: [start, end] })
         });
-        if(!r.ok) continue;
+        if(!r.ok) { console.warn('ORS r fail', await r.text()); continue; }
         const j = await r.json();
         const s = j.features && j.features[0] && j.features[0].properties && j.features[0].properties.summary;
         if(s){
@@ -377,7 +376,7 @@ navBtn.addEventListener('click', ()=> {
   }, err => showToast('Permessi posizione negati'));
 });
 
-/* ---------- SEARCH ---------- */
+/* SEARCH (Nominatim) */
 searchBtn.addEventListener('click', doSearch);
 searchInput.addEventListener('keydown', (ev)=> { if(ev.key === 'Enter'){ ev.preventDefault(); doSearch(); } });
 
@@ -394,7 +393,6 @@ async function doSearch(){
     const lat = parseFloat(first.lat), lon = parseFloat(first.lon);
     map.setView([lat, lon], 13);
     const photo = `https://source.unsplash.com/800x400/?${encodeURIComponent(first.display_name.split(',')[0])}`;
-    // quick ORS info optional
     let info = '';
     if(ORS_API_KEY){
       try{
@@ -422,10 +420,10 @@ async function doSearch(){
   }catch(e){ console.error('search err', e); showToast('Errore ricerca'); }
 }
 
-/* ---------- cleanup ---------- */
+/* cleanup */
 window.addEventListener('beforeunload', ()=> { if(favoritesUnsub) favoritesUnsub(); if(overpassController) try{ overpassController.abort(); }catch(e){} });
 
-/* ---------- util debounce ---------- */
+/* debounce util */
 function debounce(fn, wait){ let t; return (...args)=>{ clearTimeout(t); t=setTimeout(()=>fn(...args), wait); }; }
 </script>
 
