@@ -544,51 +544,73 @@ async function computeAndShowRoutes(){
     if(!ORS_API_KEY) return showToast('ORS non impostata (calcolo percorsi disabilitato)');
 
     // modes to request
-    const modes = [
-      {id:'foot-walking', label:'A piedi', color:routeColors['foot-walking'] || routeColors['foot-walking']},
-      {id:'cycling-regular', label:'Bici', color:routeColors['cycling-regular'] || routeColors['cycling-regular']},
-      {id:'driving-car', label:'Auto', color:routeColors['driving-car'] || routeColors['driving-car']}
-    ];
+const modes = [
+  {id:'foot-walking', label:'A piedi', color:routeColors['foot-walking'] || 'blue'},
+  {id:'cycling-regular', label:'Bici', color:routeColors['cycling-regular'] || 'green'},
+  {id:'driving-car', label:'Auto', color:routeColors['driving-car'] || 'red'}
+];
 
-    routeLegend.innerHTML = '';
-    const summaryParts = [];
+routeLegend.innerHTML = '';
+const summaryParts = [];
 
-    for(const m of modes){
-      try{
-        const res = await fetch(`https://api.openrouteservice.org/v2/directions/${m.id}`, {
-          method:'POST',
-          headers:{ 'Content-Type':'application/json', 'Authorization': ORS_API_KEY },
-          body: JSON.stringify({ coordinates: [start, end] })
-        });
-        if(!res.ok){
-          const text = await res.text();
-          console.warn('ORS response not ok', m.id, res.status, text);
-          continue;
-        }
-        const j = await res.json();
-        const feat = j.features && j.features[0];
-        if(!feat) continue;
-        const summary = feat.properties && feat.properties.summary;
-        const coords = feat.geometry && feat.geometry.coordinates;
-        if(coords && coords.length){
-          const latlngs = coords.map(c => [c[1], c[0]]);
-          const poly = L.polyline(latlngs, { color: m.color, weight: 5, opacity: 0.9 }).addTo(map);
-          routeLayers[m.id] = poly;
-          // center/fit to last poly (will result to fit last)
-          map.fitBounds(poly.getBounds(), { padding: [50,50] });
-        }
-        if(summary){
-          const distKm = (summary.distance/1000).toFixed(2);
-          const durMin = Math.ceil(summary.duration/60);
-          summaryParts.push(`${m.label}: ${distKm} km — ${durMin} min`);
-          const legendItem = document.createElement('div');
-          legendItem.innerHTML = `<span style="display:inline-block;width:12px;height:8px;background:${m.color};margin-right:8px;border-radius:2px"></span>${m.label}`;
-          routeLegend.appendChild(legendItem);
-        }
-      }catch(e){
-        console.error('compute route err', e);
-      }
+for(const m of modes){
+  try{
+    // Assicurati che start e end siano [lng, lat]
+    const res = await fetch(`https://api.openrouteservice.org/v2/directions/${m.id}`, {
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json',
+        'Authorization': ORS_API_KEY
+      },
+      body: JSON.stringify({
+        coordinates: [
+          [start[1], start[0]], // start lng, lat
+          [end[1], end[0]]      // end lng, lat
+        ]
+      })
+    });
+
+    if(!res.ok){
+      const text = await res.text();
+      console.warn('ORS response not ok', m.id, res.status, text);
+      summaryParts.push(`${m.label}: percorso non disponibile`);
+      continue;
     }
+
+    const j = await res.json();
+    const feat = j.features && j.features[0];
+    if(!feat) {
+      summaryParts.push(`${m.label}: percorso non disponibile`);
+      continue;
+    }
+
+    const summary = feat.properties && feat.properties.summary;
+    const coords = feat.geometry && feat.geometry.coordinates;
+
+    if(coords && coords.length){
+      const latlngs = coords.map(c => [c[1], c[0]]);
+      const poly = L.polyline(latlngs, { color: m.color, weight: 5, opacity: 0.9 }).addTo(map);
+      routeLayers[m.id] = poly;
+      map.fitBounds(poly.getBounds(), { padding: [50,50] });
+    }
+
+    if(summary){
+      const distKm = (summary.distance/1000).toFixed(2);
+      const durMin = Math.ceil(summary.duration/60);
+      summaryParts.push(`${m.label}: ${distKm} km — ${durMin} min`);
+
+      const legendItem = document.createElement('div');
+      legendItem.innerHTML = `<span style="display:inline-block;width:12px;height:8px;background:${m.color};margin-right:8px;border-radius:2px"></span>${m.label}`;
+      routeLegend.appendChild(legendItem);
+    }
+  }catch(e){
+    console.error('compute route err', e);
+    summaryParts.push(`${m.label}: errore calcolo percorso`);
+  }
+}
+
+// Mostra sommario percorsi sotto la mappa o nella downbar
+routeSummary.innerHTML = summaryParts.join('<br>');
 
     if(summaryParts.length > 0){
       downbarInner.insertAdjacentHTML('beforeend', `<div style="margin-top:10px;font-weight:700">Stime</div><div style="margin-top:6px">${escapeHtml(summaryParts.join('<br>'))}</div>`);
