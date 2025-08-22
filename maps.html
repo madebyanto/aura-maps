@@ -22,11 +22,12 @@ body,html{height:100%;font-family:'Poppins',sans-serif;}
 #downbar{position:fixed;bottom:-400px;left:10px;right:10px;background:white;padding:15px;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,0.2);transition:0.3s;z-index:1000;}
 #downbar.active{bottom:20px;}
 #downbar-close{float:right;cursor:pointer;font-weight:bold;}
-.favorite-btn, .delete-btn{background:#E515F6;color:white;border:none;padding:8px;border-radius:5px;cursor:pointer;margin-top:5px;width:100%;}
+.favorite-btn{background:#E515F6;color:white;border:none;padding:8px;border-radius:5px;cursor:pointer;margin-top:5px;width:100%;font-weight:bold;}
 #search-input{position:fixed;top:10px;left:60px;width:200px;z-index:1000;padding:5px;border-radius:5px;border:1px solid #ddd;}
-ul{list-style:none;padding:0;}
+ul{list-style:none;padding-left:0;}
 li{margin:8px 0;cursor:pointer;color:#E515F6;}
-#gps-btn{display:block;width:100%;text-align:center;margin:10px 0;padding:8px;background:#E515F6;color:white;border:none;border-radius:5px;cursor:pointer;}
+#gps-btn{background:#E515F6;color:white;border:none;padding:8px;border-radius:5px;cursor:pointer;margin-top:10px;width:100%;font-weight:bold;}
+img.place-photo{width:100%;border-radius:5px;margin:5px 0;}
 </style>
 </head>
 <body>
@@ -64,38 +65,24 @@ firebase.initializeApp(firebaseConfig);
 const auth=firebase.auth();
 const db=firebase.firestore();
 
-// Controllo login
 auth.onAuthStateChanged(async user=>{
     if(!user){window.location.href="index.html";return;}
 
-    const userDocRef=db.collection('users').doc(user.uid + ' ACCOUNT');
-
-    // Load profile image
     const profileBtn=document.getElementById('profile-btn');
-    try{
-        const doc=await userDocRef.get();
-        const data=doc.exists?doc.data():{};
-        if(data.profileImage) profileBtn.src=data.profileImage;
-        else profileBtn.src="placeholder.png";
-    }catch(e){console.warn(e);}
+    const userDocRef=db.collection('users').doc(user.uid);
+    const doc=await userDocRef.get();
+    if(!doc.exists){
+        await userDocRef.set({Maps:{}, profileImage:"https://aurastudioitalia.it/antogalaxyavatar.png"});
+    }
+    const data=doc.exists?doc.data():{};
+    if(data.profileImage) profileBtn.src=data.profileImage;
     profileBtn.onclick=()=>alert("Per gestire il tuo profilo, vai su os.aurastudioitalia.it o scarica Aura+ su Google Play Store.");
 
-    // init map
     const map=L.map('map',{zoomControl:false}).setView([45.4642,9.19],13);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'&copy; OpenStreetMap contributors'}).addTo(map);
 
     const sidebar=document.getElementById('sidebar');
     document.getElementById('menu-btn').onclick=()=>sidebar.classList.toggle('active');
-
-    // GPS button
-    const gpsBtn=document.getElementById('gps-btn');
-    gpsBtn.onclick=()=>{
-        if(navigator.geolocation){
-            navigator.geolocation.getCurrentPosition(pos=>{
-                map.setView([pos.coords.latitude,pos.coords.longitude],15);
-            },()=>alert("Impossibile ottenere la posizione."));
-        }else alert("Geolocalizzazione non supportata.");
-    };
 
     const downbar=document.getElementById('downbar');
     const downbarContent=document.getElementById('downbar-content');
@@ -105,61 +92,47 @@ auth.onAuthStateChanged(async user=>{
 
     async function loadFavorites(){
         favListEl.innerHTML='';
-        const doc=await userDocRef.get();
-        const data=doc.exists?doc.data():{};
-        if(!data.Maps) await userDocRef.set({Maps:{}},{merge:true});
-        for(const key in data.Maps){
-            const place=data.Maps[key];
+        const snap=await userDocRef.get();
+        const Maps=snap.exists&&snap.data().Maps?snap.data().Maps:{};
+        for(const key in Maps){
+            const place=Maps[key];
             const li=document.createElement('li');
             li.textContent=place.name;
             li.onclick=()=>{map.setView([place.lat,place.lng],14); showDownbar(place);}
             favListEl.appendChild(li);
         }
     }
+
     await loadFavorites();
 
     function showDownbar(place){
         let html=`<h4>${place.name}</h4>`;
         if(place.address) html+=`<p>${place.address}</p>`;
-        if(place.photo) html+=`<img src="${place.photo}" style="width:100%;border-radius:5px;margin:5px 0;">`;
+        if(place.photo) html+=`<img src="${place.photo}" class="place-photo">`;
         if(place.info) html+=`<p>${place.info}</p>`;
-        html+=`<button class="favorite-btn">Aggiungi ai preferiti</button>`;
-        html+=`<button class="delete-btn">Rimuovi dai preferiti</button>`;
+        html+=`<button class="favorite-btn">${place.isFavorite?"Rimuovi dai preferiti":"Aggiungi ai preferiti"}</button>`;
         downbarContent.innerHTML=html;
         downbar.classList.add('active');
 
-        // Aggiungi ai preferiti
-        const favBtn=downbarContent.querySelector('.favorite-btn');
-        favBtn.onclick=async()=>{
-            const userDoc=await userDocRef.get();
-            let Maps=userDoc.exists&&userDoc.data().Maps?userDoc.data().Maps:{};
-            Maps[Date.now()]={name:place.name,lat:place.lat,lng:place.lng,address:place.address,photo:place.photo,info:place.info};
-            await userDocRef.set({Maps},{merge:true});
-            await loadFavorites();
-            alert("Aggiunto ai preferiti!");
-        };
-
-        // Rimuovi dai preferiti
-        const delBtn=downbarContent.querySelector('.delete-btn');
-        delBtn.onclick=async()=>{
-            const userDoc=await userDocRef.get();
-            let Maps=userDoc.exists&&userDoc.data().Maps?userDoc.data().Maps:{};
-            for(const key in Maps){
-                if(Maps[key].lat===place.lat && Maps[key].lng===place.lng){
-                    delete Maps[key];
-                    break;
-                }
+        const btn=downbarContent.querySelector('.favorite-btn');
+        btn.onclick=async()=>{
+            const snap=await userDocRef.get();
+            let Maps=snap.exists&&snap.data().Maps?snap.data().Maps:{};
+            if(!place.isFavorite){
+                Maps[Date.now()]={...place};
+                place.isFavorite=true;
+            }else{
+                for(const k in Maps){if(Maps[k].name===place.name) delete Maps[k];}
+                place.isFavorite=false;
             }
             await userDocRef.set({Maps},{merge:true});
-await loadFavorites();
-            downbar.classList.remove('active');
-            alert("Luogo rimosso dai preferiti!");
+            await loadFavorites();
+            showDownbar(place);
         };
     }
 
-    // Ricerca città/luoghi
     const searchInput=document.getElementById('search-input');
-    searchInput.addEventListener('keypress', async e=>{
+    searchInput.addEventListener('keypress',async e=>{
         if(e.key==='Enter'){
             const q=searchInput.value;
             const resp=await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}`);
@@ -168,41 +141,66 @@ await loadFavorites();
                 const first=data[0];
                 const lat=parseFloat(first.lat), lng=parseFloat(first.lon);
                 map.setView([lat,lng],13);
-                
-                // Recupera foto via Mapillary
+
+                // Mapillary photo
                 let photoUrl="";
                 try{
                     const mapResp=await fetch(`https://graph.mapillary.com/images?access_token=${ORS_API_KEY}&fields=thumb_1024&closeto=${lng},${lat}&limit=1`);
                     const mapData=await mapResp.json();
-                    if(mapData.data&&mapData.data.length>0) photoUrl=mapData.data[0].thumb_1024;
+                    if(mapData.data && mapData.data.length > 0) {
+    photoUrl = mapData.data[0].thumb_1024;
+}
+.data.length>0) photoUrl=mapData.data[0].thumb_1024;
                 }catch(e){console.warn("Mapillary error",e);}
 
-                // Info percorso ORS
+                // Route info (a piedi, bici, auto)
                 let infoStr="";
                 try{
-                    const routesResp=await fetch("https://api.openrouteservice.org/v2/directions/driving-car",{
-                        method:"POST",
-                        headers:{"Authorization":ORS_API_KEY,"Content-Type":"application/json"},
-                        body:JSON.stringify({coordinates:[[lng,lat],[lng+0.01,lat+0.01]]})
-                    });
-                    const routesData=await routesResp.json();
-                    if(routesData.routes&&routesData.routes[0])
-                        infoStr=`Percorso: ${(routesData.routes[0].summary.distance/1000).toFixed(2)} km`;
-                }catch(e){console.warn(e);}
+                    const coords=[[lng,lat],[lng+0.01,lat+0.01]]; // esempio semplice
+                    const modes=["foot-walking","cycling-regular","driving-car","driving-hgv"];
+                    for(const mode of modes){
+                        const routesResp=await fetch(`https://api.openrouteservice.org/v2/directions/${mode}`,{
+                            method:"POST",
+                            headers:{"Authorization":ORS_API_KEY,"Content-Type":"application/json"},
+                            body:JSON.stringify({coordinates:coords})
+                        });
+                        const routesData=await routesResp.json();
+                        if(routesData.routes && routesData.routes[0]){
+                            const dist=(routesData.routes[0].summary.distance/1000).toFixed(2);
+                            const dur=Math.ceil(routesData.routes[0].summary.duration/60);
+                            infoStr+=`${mode}: ${dist} km, ${dur} min<br>`;
+                        }
+                    }
+                }catch(e){console.warn("ORS routes error",e);}
 
-                showDownbar({name:first.display_name,lat,lng,address:first.display_name,photo:photoUrl,info:infoStr});
+                const place={name:first.display_name,lat,lng,address:first.display_name,photo:photoUrl,info:infoStr,isFavorite:false};
+                showDownbar(place);
                 sidebar.classList.remove('active');
-            } else alert("Nessun risultato trovato.");
+            }
         }
     });
 
-    // Click sulla mappa per aggiungere preferito
+    // GPS button
+    document.getElementById('gps-btn').onclick=()=>{
+        if(navigator.geolocation){
+            navigator.geolocation.getCurrentPosition(pos=>{
+                const lat=pos.coords.latitude;
+                const lng=pos.coords.longitude;
+                map.setView([lat,lng],15);
+                alert(`Sei qui: lat ${lat.toFixed(5)}, lng ${lng.toFixed(5)}`);
+            }, err=>alert("Impossibile ottenere la posizione: "+err.message));
+        }else{
+            alert("Geolocalizzazione non supportata.");
+        }
+    };
+
+    // Click sulla mappa per aggiungere preferiti manualmente
     map.on('click', async e=>{
         const name=prompt("Nome del luogo da salvare nei preferiti:");
         if(!name) return;
-        const favData={name,lat:e.latlng.lat,lng:e.latlng.lng};
-        const userDoc=await userDocRef.get();
-        let Maps=userDoc.exists && userDoc.data().Maps ? userDoc.data().Maps : {};
+        const favData={name,lat:e.latlng.lat,lng:e.latlng.lng,address:"",photo:"",info:"",isFavorite:true};
+        const snap=await userDocRef.get();
+        let Maps=snap.exists&&snap.data().Maps?snap.data().Maps:{};
         Maps[Date.now()]=favData;
         await userDocRef.set({Maps},{merge:true});
         await loadFavorites();
