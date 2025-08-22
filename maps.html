@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Aura Maps — Ottimizzato</title>
+<title>Aura Maps</title>
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
 
 <!-- Firebase 8.10.0 -->
@@ -38,6 +38,8 @@ html,body{height:100%;margin:0;font-family:'Poppins',sans-serif;background:var(-
 .fav-item .title{font-weight:600;color:var(--mag);cursor:pointer}
 .fav-actions{display:flex;gap:8px}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:86px;background:rgba(0,0,0,.8);color:#fff;padding:8px 12px;border-radius:10px;display:none;z-index:3000}
+.toggle-row{display:flex;align-items:center;gap:8px;margin:8px 0}
+.toggle-row label{font-size:14px;color:var(--muted)}
 @media(max-width:720px){.sidebar{width:92%;left:4%}.downbar{left:6px;transform:none;width:calc(100% - 12px)}}
 </style>
 </head>
@@ -45,20 +47,31 @@ html,body{height:100%;margin:0;font-family:'Poppins',sans-serif;background:var(-
 
 <header class="topbar">
   <div class="brand"><span id="hamburger" class="hamburger">☰</span><span>AuraMaps</span></div>
-  <img id="profileImg" class="profile-img" src="" alt="Profilo">
+  <!-- Usiamo l'id che hai mostrato nell'esempio -->
+  <img id="profile-img" class="profile-img" src="default-profile.png" alt="Immagine del profilo">
 </header>
 
 <aside id="sidebar" class="sidebar" aria-hidden="true">
   <h3>Ricerca & Preferiti</h3>
+
   <div class="search-row">
     <input id="searchInput" type="search" placeholder="Cerca città, indirizzo o luogo..." />
     <button id="searchBtn" class="btn">Cerca</button>
   </div>
-  <div style="margin-bottom:10px;">
+
+  <div style="margin-bottom:6px">
     <button id="gpsBtn" class="btn" style="width:100%;">Mostra dove sei</button>
   </div>
+
+  <div class="toggle-row">
+    <label for="poiToggle">Mostra POI</label>
+    <input id="poiToggle" type="checkbox">
+    <span id="poiToggleLabel" style="margin-left:auto;color:var(--muted)">No</span>
+  </div>
+
   <h4>Preferiti</h4>
   <div id="favoritesList" style="margin-bottom:12px"></div>
+
   <hr style="border:none;height:1px;background:#f1f1f5;margin:12px 0;">
   <div style="font-size:13px;color:var(--muted)">Se non hai un account, crealo su <a href="https://os.aurastudioitalia.it" target="_blank">os.aurastudioitalia.it</a> o scarica Aura+ su Google Play Store.</div>
 </aside>
@@ -77,8 +90,8 @@ html,body{height:100%;margin:0;font-family:'Poppins',sans-serif;background:var(-
 <div id="toast" class="toast"></div>
 
 <script>
-/* CONFIG */
-const ORS_API_KEY = ""; // se vuoi usare ORS metti la key qui
+/* ---------- CONFIG ---------- */
+const eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImUwYzIxYjc2ZmQyNTRiYzY4YTUxNTVlNmIyOGViNDJmIiwiaCI6Im11cm11cjY0In0= = ""; // opzionale
 const firebaseConfig = {
   apiKey: "AIzaSyDsrHAtIh5bsYDHa1wz0LMcmciChAoRikU",
   authDomain: "myauraid-f03c6.firebaseapp.com",
@@ -87,15 +100,14 @@ const firebaseConfig = {
   messagingSenderId: "190478237725",
   appId: "1:190478237725:web:0d39907473f511b85a06f4"
 };
-
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
 
-/* UI refs */
-const profileImg = document.getElementById('profileImg');
-const sidebar = document.getElementById('sidebar');
+/* ---------- UI refs ---------- */
+const profileImg = document.getElementById('profile-img');
 const hamburger = document.getElementById('hamburger');
+const sidebar = document.getElementById('sidebar');
 const searchInput = document.getElementById('searchInput');
 const searchBtn = document.getElementById('searchBtn');
 const gpsBtn = document.getElementById('gpsBtn');
@@ -106,29 +118,45 @@ const downbarClose = document.getElementById('downbarClose');
 const addFavBtn = document.getElementById('addFavBtn');
 const navBtn = document.getElementById('navBtn');
 const toast = document.getElementById('toast');
+const poiToggle = document.getElementById('poiToggle');
+const poiToggleLabel = document.getElementById('poiToggleLabel');
 
-/* state */
+/* ---------- state ---------- */
 let currentUser = null;
 let map = null;
 let poiMarkers = [];
 let currentPlace = null;
 let favoritesUnsub = null;
-let overpassController = null; // for aborting overpass fetch
+let overpassController = null;
+let showPOI = (localStorage.getItem('aura_show_poi') === '1'); // persist
 
-/* helpers */
+/* ---------- helpers ---------- */
 function showToast(msg, ms=2000){ toast.textContent = msg; toast.style.display = 'block'; clearTimeout(showToast._t); showToast._t = setTimeout(()=> toast.style.display='none', ms); }
 function escapeHtml(s){ if(!s) return ''; return String(s).replace(/[&<>"']/g, (m)=> ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+function sanitizePlace(place){
+  return {
+    name: String(place.name || '').slice(0, 200),
+    lat: Number(place.lat || place.latitude || 0),
+    lng: Number(place.lng || place.longitude || place.lon || 0),
+    address: String(place.address || '').slice(0, 500),
+    photo: String(place.photo || '').slice(0, 1000),
+    info: String(place.info || '').slice(0, 2000)
+  };
+}
 
-/* AUTH */
+/* ---------- AUTH ---------- */
 auth.onAuthStateChanged(async (u) => {
   if(!u){ window.location.href='index.html'; return; }
   currentUser = u;
   await loadProfileImage();
   initMap();
   attachFavoritesListener();
+  // init poi toggle UI
+  poiToggle.checked = showPOI;
+  poiToggleLabel.textContent = showPOI ? 'Sì' : 'No';
 });
 
-/* Load profile image directly from profileImage field */
+/* ---------- PROFILE IMAGE ---------- */
 async function loadProfileImage(){
   try{
     const docRef = db.collection('users').doc(currentUser.uid);
@@ -139,114 +167,103 @@ async function loadProfileImage(){
       profileImg.src = "https://aurastudioitalia.it/antogalaxyavatar.png";
       return;
     }
-    const data = snap.data();
-    // IMPORTANT: set src exactly to profileImage (string URL)
-    if(data && typeof data.profileImage === 'string' && data.profileImage.trim().length){
-      profileImg.src = data.profileImage;
-    } else {
-      profileImg.src = "https://aurastudioitalia.it/antogalaxyavatar.png";
-    }
+    const userData = snap.data() || {};
+    // EXACT: set src to the string stored in profileImage, fallback otherwise
+    const profileImageURL = userData.profileImage || 'https://aurastudioitalia.it/antogalaxyavatar.png';
+    profileImg.src = profileImageURL;
   }catch(e){
     console.error('loadProfileImage err', e);
-    profileImg.src = "https://aurastudioitalia.it/antogalaxyavatar.png";
+    profileImg.src = 'https://aurastudioitalia.it/antogalaxyavatar.png';
   }
 }
+profileImg.addEventListener('error', ()=> { profileImg.src = 'https://aurastudioitalia.it/antogalaxyavatar.png'; });
+profileImg.addEventListener('click', ()=> alert("Per gestire il tuo profilo, vai su os.aurastudioitalia.it o scarica Aura+ su Google Play Store."));
 
-/* profile click hint */
-profileImg.addEventListener('click', ()=> {
-  alert("Per gestire il tuo profilo, vai su os.aurastudioitalia.it o scarica Aura+ su Google Play Store.");
-});
-
-/* sidebar toggle */
+/* ---------- SIDEBAR ---------- */
 hamburger.addEventListener('click', ()=> sidebar.classList.toggle('open'));
 
-/* MAP INIT */
+/* POI toggle */
+poiToggle.addEventListener('change', ()=>{
+  showPOI = poiToggle.checked;
+  localStorage.setItem('aura_show_poi', showPOI ? '1':'0');
+  poiToggleLabel.textContent = showPOI ? 'Sì' : 'No';
+  if(!showPOI) clearPOIMarkers();
+  else {
+    if(map && map.getZoom() >= 13) loadPOI();
+  }
+});
+
+/* ---------- MAP ---------- */
 function initMap(){
   if(map) return;
   map = L.map('map', { zoomControl:false }).setView([45.4642, 9.19], 12);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution:'© OpenStreetMap contributors' }).addTo(map);
 
-  // throttle POI loading and only load when zoom >= 13 and bbox small enough
   map.on('moveend', debounce(()=> {
-    if(map.getZoom() < 13){ clearPOIMarkers(); showToast('Zoom avanti per vedere POI'); return; }
+    if(!showPOI) return;
+    if(map.getZoom() < 13){ clearPOIMarkers(); return; }
     const b = map.getBounds();
     const latSpan = Math.abs(b.getNorth() - b.getSouth());
     const lngSpan = Math.abs(b.getEast() - b.getWest());
-    // if area too large avoid heavy overpass calls
-    if(latSpan > 1.2 || lngSpan > 1.6){ clearPOIMarkers(); showToast('Avvicinati per caricare POI'); return; }
+    if(latSpan > 1.4 || lngSpan > 2.0){ clearPOIMarkers(); showToast('Zoom avanti per vedere POI'); return; }
     loadPOI();
-  }, 600));
+  }, 700));
 
-  // initial (only if zoom >=13)
-  if(map.getZoom() >= 13) loadPOI();
-
-  // click map: reverse geocode and show downbar (lightweight)
   map.on('click', async (e)=>{
     try{
       const lat = e.latlng.lat, lon = e.latlng.lng;
       const resp = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`);
-      if(!resp.ok) throw new Error('Reverse failed');
+      if(!resp.ok) throw new Error('reverse failed');
       const data = await resp.json();
       const name = data.display_name || `Posizione ${lat.toFixed(5)}, ${lon.toFixed(5)}`;
       const place = { name, address: data.display_name || '', lat, lng: lon, photo:'', info:'', isFavorite:false };
       showDownbar(place);
     }catch(err){
-      console.error('map click', err);
+      console.error('map click err', err);
       showToast('Errore lettura posizione');
     }
   });
 }
 
-/* clear poi markers */
+/* ---------- POI (Overpass) with AbortController ---------- */
 function clearPOIMarkers(){
-  poiMarkers.forEach(m => map.removeLayer(m));
+  poiMarkers.forEach(m => { try{ map.removeLayer(m); }catch(e){} });
   poiMarkers = [];
-  if(overpassController){
-    try{ overpassController.abort(); }catch(e){}
-    overpassController = null;
-  }
+  if(overpassController){ try{ overpassController.abort(); }catch(e){} overpassController = null; }
 }
 
-/* load POI via Overpass but safely with AbortController and limits */
 async function loadPOI(){
+  if(!showPOI) return;
   clearPOIMarkers();
-  // prepare bounds
   const b = map.getBounds();
   const s = b.getSouth(), w = b.getWest(), n = b.getNorth(), e = b.getEast();
-
-  // safety: if bbox too big, skip (already checked on moveend, but double check)
   if(Math.abs(n - s) > 1.4 || Math.abs(e - w) > 2.0){ showToast('Area troppo ampia per POI'); return; }
 
-  // build Overpass query with timeout and limit
-  const query = `[out:json][timeout:20];
+  const q = `[out:json][timeout:20];
 (
   node["amenity"~"restaurant|cafe|bar|fast_food|hotel|pub|bakery|supermarket|pharmacy"](${s},${w},${n},${e});
   way["amenity"~"restaurant|cafe|bar|fast_food|hotel|pub|bakery|supermarket|pharmacy"](${s},${w},${n},${e});
 );
-out center 150;`;
+out center 120;`;
 
   overpassController = new AbortController();
   const signal = overpassController.signal;
-
   try{
-    const res = await fetch('https://overpass-api.de/api/interpreter', { method:'POST', body: query, signal });
-    if(!res.ok) throw new Error('Overpass fetch failed');
+    const res = await fetch('https://overpass-api.de/api/interpreter', { method:'POST', body:q, signal });
+    if(!res.ok) throw new Error('Overpass error');
     const json = await res.json();
-    if(!json.elements || json.elements.length === 0) return;
-    // limit processed elements to a fair amount (avoid heavy UI)
-    const elements = json.elements.slice(0, 120);
-    elements.forEach(el => {
+    const elements = json.elements || [];
+    elements.slice(0,120).forEach(el => {
       const lat = el.lat || (el.center && el.center.lat);
       const lon = el.lon || (el.center && el.center.lon);
       if(!lat || !lon) return;
       const tags = el.tags || {};
       const name = tags.name || '(Senza nome)';
-      const category = tags.amenity || tags.shop || '';
       const address = [tags['addr:street'], tags['addr:housenumber'], tags['addr:city']].filter(Boolean).join(' ');
       const marker = L.marker([lat, lon]).addTo(map);
       poiMarkers.push(marker);
       marker.on('click', ()=> {
-        const place = { name, address, lat, lng: lon, category, photo:'', info:'Recensioni non disponibili', isFavorite:false };
+        const place = { name, address, lat, lng:lon, photo:'', info:'Recensioni non disponibili', isFavorite:false };
         showDownbar(place);
       });
     });
@@ -258,26 +275,22 @@ out center 150;`;
   }
 }
 
-/* Debounce */
-function debounce(fn, wait){ let t; return (...args)=>{ clearTimeout(t); t=setTimeout(()=>fn(...args), wait); }; }
-
-/* FAVORITES (subcollection) */
+/* ---------- FAVORITES (subcollection) ---------- */
 function attachFavoritesListener(){
   const col = db.collection('users').doc(currentUser.uid).collection('Maps').orderBy('timestamp','desc');
   if(favoritesUnsub) favoritesUnsub();
-  favoritesUnsub = col.onSnapshot(snapshot => {
+  favoritesUnsub = col.onSnapshot(snapshot=>{
     favoritesList.innerHTML = '';
     if(snapshot.empty){ favoritesList.innerHTML = '<div style="color:var(--muted);padding:8px">Nessun preferito</div>'; return; }
     snapshot.forEach(doc => {
       const id = doc.id;
       const data = doc.data();
       const luogo = data.luogo || data;
-      const item = document.createElement('div');
-      item.className = 'fav-item';
+      const item = document.createElement('div'); item.className='fav-item';
       item.innerHTML = `<div style="flex:1"><div class="title">${escapeHtml(luogo.name || 'Luogo')}</div><div style="font-size:12px;color:var(--muted)">${escapeHtml(luogo.address || '')}</div></div>
-        <div class="fav-actions"><button class="small-btn" data-go="${id}" data-lat="${luogo.lat}" data-lng="${luogo.lng}">Vai</button><button class="small-btn" data-del="${id}" style="background:#ffecec;border:1px solid #f0c0c0;color:#c00">Elimina</button></div>`;
+        <div class="fav-actions"><button class="small-btn" data-go="${id}" data-lat="${luogo.lat}" data-lng="${luogo.lng}">Vai</button>
+        <button class="small-btn" data-del="${id}" style="background:#ffecec;border:1px solid #f0c0c0;color:#c00">Elimina</button></div>`;
       favoritesList.appendChild(item);
-
       item.querySelector('[data-go]')?.addEventListener('click', (ev)=> {
         const lat = parseFloat(ev.currentTarget.dataset.lat), lng = parseFloat(ev.currentTarget.dataset.lng);
         map.setView([lat,lng],15);
@@ -287,11 +300,9 @@ function attachFavoritesListener(){
         if(!confirm('Eliminare questo preferito?')) return;
         try{ await db.collection('users').doc(currentUser.uid).collection('Maps').doc(idToDel).delete(); showToast('Preferito eliminato'); }catch(e){ console.error(e); showToast('Errore eliminazione'); }
       });
-
-      item.querySelector('.title')?.addEventListener('click', ()=> {
-        const lat = parseFloat(item.querySelector('[data-go]').dataset.lat);
-        const lng = parseFloat(item.querySelector('[data-go]').dataset.lng);
-        const place = { name:luogo.name, address: luogo.address||'', lat, lng, photo:luogo.photo||'', info:luogo.info||'', isFavorite:true, _id: id };
+      item.querySelector('.title')?.addEventListener('click', ()=>{
+        const lat = parseFloat(item.querySelector('[data-go]').dataset.lat), lng = parseFloat(item.querySelector('[data-go]').dataset.lng);
+        const place = { name:luogo.name, address: luogo.address||'', lat, lng, photo:luogo.photo||'', info:luogo.info||'', isFavorite:true, _id:id };
         map.setView([lat,lng],15);
         showDownbar(place);
       });
@@ -299,16 +310,24 @@ function attachFavoritesListener(){
   }, err => console.error('favorites listener', err));
 }
 
-/* add favorite */
+/* ---------- ADD FAVORITE (SANITIZED) ---------- */
 async function addFavorite(place){
+  if(!place) return showToast('Nessun luogo selezionato');
+  const p = sanitizePlace(place);
+  if(!isFinite(p.lat) || !isFinite(p.lng) || !p.name){ return showToast('Luogo non valido'); }
   try{
-    const doc = { luogo: { ...place }, timestamp: firebase.firestore.FieldValue.serverTimestamp() };
+    const doc = { luogo: p, timestamp: firebase.firestore.FieldValue.serverTimestamp() };
     await db.collection('users').doc(currentUser.uid).collection('Maps').add(doc);
     showToast('Preferito aggiunto');
-  }catch(e){ console.error('addFav err', e); showToast('Errore salvataggio'); }
+  }catch(e){
+    console.error('addFavorite error', e);
+    // mostra messaggio più descrittivo
+    const msg = e && e.message ? e.message : 'Errore salvataggio';
+    showToast('Errore salvataggio: ' + msg, 4000);
+  }
 }
 
-/* DOWNBAR show/close */
+/* ---------- DOWNBAR ---------- */
 function showDownbar(place){
   currentPlace = place;
   let html = `<h3 style="margin:0 0 6px 0">${escapeHtml(place.name)}</h3>`;
@@ -327,15 +346,14 @@ addFavBtn.addEventListener('click', async ()=> {
   await addFavorite(currentPlace);
 });
 
-/* NAV: compute ORS estimates */
+/* NAV: ORS estimates (optional) */
 navBtn.addEventListener('click', ()=> {
   if(!currentPlace) return showToast('Seleziona prima un luogo');
   if(!navigator.geolocation) return showToast('Abilita la geolocalizzazione');
-  navigator.geolocation.getCurrentPosition(async (pos)=>{
-    if(!ORS_API_KEY) return showToast('ORS non configurato (opzionale)');
+  navigator.geolocation.getCurrentPosition(async pos=>{
+    if(!ORS_API_KEY) return showToast('ORS non impostata');
     const start = [pos.coords.longitude, pos.coords.latitude];
     const end = [currentPlace.lng || currentPlace.lon, currentPlace.lat];
-    if(!end[0] || !end[1]) return showToast('Coordinate destinazione non disponibili');
     const modes = [{id:'foot-walking',label:'A piedi',emoji:'🚶'},{id:'cycling-regular',label:'Bici',emoji:'🚴'},{id:'driving-car',label:'Auto',emoji:'🚗'}];
     let infoHtml = '<div style="margin-top:8px;font-weight:700">Stime percorso</div>';
     for(const m of modes){
@@ -359,9 +377,10 @@ navBtn.addEventListener('click', ()=> {
   }, err => showToast('Permessi posizione negati'));
 });
 
-/* SEARCH (Nominatim) */
+/* ---------- SEARCH ---------- */
 searchBtn.addEventListener('click', doSearch);
-searchInput.addEventListener('keydown', (ev)=> { if(ev.key==='Enter'){ ev.preventDefault(); doSearch(); } });
+searchInput.addEventListener('keydown', (ev)=> { if(ev.key === 'Enter'){ ev.preventDefault(); doSearch(); } });
+
 async function doSearch(){
   const q = (searchInput.value || '').trim();
   if(!q) return showToast('Inserisci cosa cercare');
@@ -374,13 +393,11 @@ async function doSearch(){
     const first = arr[0];
     const lat = parseFloat(first.lat), lon = parseFloat(first.lon);
     map.setView([lat, lon], 13);
-    // quick photo via Unsplash fallback
     const photo = `https://source.unsplash.com/800x400/?${encodeURIComponent(first.display_name.split(',')[0])}`;
-    // quick ORS info (optional)
+    // quick ORS info optional
     let info = '';
     if(ORS_API_KEY){
       try{
-        // compute from current map center just to have estimates
         const center = map.getCenter();
         const coords = [[center.lng, center.lat], [lon, lat]];
         const modes = ['foot-walking','cycling-regular','driving-car'];
@@ -395,7 +412,7 @@ async function doSearch(){
             const j = await r.json();
             const s = j.features && j.features[0] && j.features[0].properties && j.features[0].properties.summary;
             if(s){ info += `${m.replace('-',' ')}: ~${Math.ceil(s.duration/60)} min • `; }
-          }catch(e){/*ignore per mode*/ }
+          }catch(e){/* ignore */ }
         }
       }catch(e){ console.warn('ORS quick', e); }
     }
@@ -405,9 +422,12 @@ async function doSearch(){
   }catch(e){ console.error('search err', e); showToast('Errore ricerca'); }
 }
 
-/* Utils: unload cleanup */
+/* ---------- cleanup ---------- */
 window.addEventListener('beforeunload', ()=> { if(favoritesUnsub) favoritesUnsub(); if(overpassController) try{ overpassController.abort(); }catch(e){} });
 
+/* ---------- util debounce ---------- */
+function debounce(fn, wait){ let t; return (...args)=>{ clearTimeout(t); t=setTimeout(()=>fn(...args), wait); }; }
 </script>
+
 </body>
 </html>
