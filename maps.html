@@ -15,7 +15,7 @@
 body,html{height:100%;font-family:'Poppins',sans-serif;}
 #map{height:100vh;width:100vw;}
 #topbar{position:fixed;top:0;left:0;right:0;height:50px;background:white;display:flex;align-items:center;justify-content:space-between;padding:0 15px;box-shadow:0 2px 5px rgba(0,0,0,0.15);z-index:1000;border-radius:0 0 10px 10px;}
-#menu-btn,#gps-btn{font-size:24px;cursor:pointer;}
+#menu-btn{font-size:24px;cursor:pointer;}
 #profile-btn{width:40px;height:40px;border-radius:50%;cursor:pointer;object-fit:cover;}
 #sidebar{position:fixed;top:50px;left:-260px;width:260px;height:calc(100% - 50px);background:white;box-shadow:2px 0 5px rgba(0,0,0,0.2);transition:0.3s;padding:15px;border-radius:0 10px 10px 0;z-index:999;overflow-y:auto;}
 #sidebar.active{left:0;}
@@ -26,22 +26,20 @@ body,html{height:100%;font-family:'Poppins',sans-serif;}
 #search-input{position:fixed;top:10px;left:60px;width:200px;z-index:1000;padding:5px;border-radius:5px;border:1px solid #ddd;}
 ul{list-style:none;}
 li{margin:8px 0;cursor:pointer;color:#E515F6;}
-#gps-btn{margin-left:10px;}
+#gps-btn{display:block;width:100%;text-align:center;margin:10px 0;padding:8px;background:#E515F6;color:white;border:none;border-radius:5px;cursor:pointer;}
 </style>
 </head>
 <body>
 
 <div id="topbar">
-  <div>
-    <span id="menu-btn">&#9776;</span>
-    <span id="gps-btn">&#128205;</span>
-  </div>
+  <div id="menu-btn">&#9776;</div>
   <img id="profile-btn" src="placeholder.png" alt="Profile">
 </div>
 
 <div id="sidebar">
   <h3>Preferiti</h3>
   <ul id="favorites-list"></ul>
+  <button id="gps-btn">Mostra dove sei</button>
 </div>
 
 <div id="downbar">
@@ -91,7 +89,7 @@ auth.onAuthStateChanged(async user=>{
         if(navigator.geolocation){
             navigator.geolocation.getCurrentPosition(pos=>{
                 map.setView([pos.coords.latitude,pos.coords.longitude],15);
-            });
+            },()=>alert("Impossibile ottenere la posizione."));
         }else alert("Geolocalizzazione non supportata.");
     };
 
@@ -156,26 +154,24 @@ auth.onAuthStateChanged(async user=>{
                     if(mapData.data&&mapData.data.length>0) photoUrl=mapData.data[0].thumb_1024;
                 }catch(e){console.warn("Mapillary error",e);}
 
-                // Route info dummy (puoi sostituire con ORS reale)
                 let infoStr=`Coordinate: ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
-
                 showDownbar({name:first.display_name,lat,lng,address:first.display_name,photo:photoUrl,info:infoStr});
                 sidebar.classList.remove('active');
             }
         }
     });
 
-    // click map to add favorite manually
+    // click map to show downbar
     map.on('click',async e=>{
         const lat=e.latlng.lat,lng=e.latlng.lng;
-        // reverse geocode
         const resp=await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`);
-        const data=await resp.json();
-        const name=data.address && data.address.city?data.address.city:data.display_name||"Luogo";
-        showDownbar({name:name,lat,lng,address:data.display_name||"",photo:"",info:`Coordinate: ${lat.toFixed(5)}, ${lng.toFixed(5)}`});
+const data=await resp.json();
+        const name=data.name || data.display_name || `Luogo ${lat.toFixed(2)},${lng.toFixed(2)}`;
+        showDownbar({name,lat,lng,address:data.display_name});
     });
 
 });
 </script>
+
 </body>
 </html>
